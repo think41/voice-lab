@@ -19,6 +19,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
   const [events, setEvents] = useState<string[]>([]);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [audioSrc, setAudioSrc] = useState<string | null>(null);
 
   if (!open) return null;
 
@@ -28,6 +29,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
       return;
     }
     setError(null);
+    setAudioSrc(null);
     try {
       await navigator.mediaDevices.getUserMedia({ audio: true });
       const session = await createTestSession(agentId);
@@ -43,17 +45,22 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
           type?: string;
           audio_base64?: string;
           mime_type?: string;
+          message?: string;
         };
+        if (event.type === 'runtime.error') {
+          setError(event.message ?? 'Runtime error while starting test call.');
+        }
         if (event.type === 'audio.output' && event.audio_base64) {
           audioRef.current?.pause();
-          audioRef.current = new Audio(
-            `data:${event.mime_type ?? 'audio/mpeg'};base64,${event.audio_base64}`
-          );
+          const src = `data:${event.mime_type ?? 'audio/mpeg'};base64,${event.audio_base64}`;
+          setAudioSrc(src);
+          audioRef.current = new Audio(src);
           void audioRef.current.play().catch(() => {
-            setError('Browser blocked audio playback. Press Start again or allow site audio.');
+            setError('Audio arrived, but browser playback was blocked. Use the audio controls below.');
           });
         }
       };
+      socket.onerror = () => setError('WebSocket failed. Check the FastAPI terminal logs.');
       socket.onclose = () => setActive(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start test call.');
@@ -65,6 +72,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
     socketRef.current = null;
     audioRef.current?.pause();
     audioRef.current = null;
+    setAudioSrc(null);
     setActive(false);
   };
 
@@ -80,6 +88,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
       <div className="space-y-4 p-4">
         <AudioMeter active={active} />
         <TranscriptStream events={events} />
+        {audioSrc ? <audio className="w-full" controls src={audioSrc} /> : null}
         {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-danger">{error}</div> : null}
         <div className="flex gap-2">
           <Button className="flex-1" variant="primary" icon={<Mic size={14} />} onClick={start} disabled={active}>Start</Button>

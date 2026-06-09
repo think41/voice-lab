@@ -1,3 +1,4 @@
+import logging
 from base64 import b64encode
 from collections.abc import AsyncIterator
 
@@ -10,12 +11,20 @@ from app.schemas.agent import AgentConfig
 from app.services.adk_session_service import create_adk_session_service
 from app.services.voice_runtime import RuntimeEvent, VoiceRuntime
 
+logger = logging.getLogger("uvicorn.error")
+
 
 class PipecatAdkRuntime(VoiceRuntime):
     async def validate_environment(self) -> None:
         settings = get_settings()
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required to run a voice test call")
+        logger.info(
+            "voice runtime validated gemini_key=%s tts_provider=%s tts_key=%s",
+            "set",
+            settings.tts_provider,
+            "set" if settings.tts_api_key else "missing",
+        )
 
     async def synthesize_first_message(self, config: AgentConfig) -> RuntimeEvent:
         settings = get_settings()
@@ -25,6 +34,12 @@ class PipecatAdkRuntime(VoiceRuntime):
             raise RuntimeError("TTS_API_KEY is required to speak the first message")
 
         voice_id = self._elevenlabs_voice_id(config.tts_voice)
+        logger.info(
+            "elevenlabs tts request voice=%s voice_id=%s text_chars=%d",
+            config.tts_voice,
+            voice_id,
+            len(config.first_message),
+        )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
                 f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
@@ -40,6 +55,7 @@ class PipecatAdkRuntime(VoiceRuntime):
                 },
             )
             response.raise_for_status()
+        logger.info("elevenlabs tts response bytes=%d", len(response.content))
 
         return RuntimeEvent(
             type="audio.output",
