@@ -1,0 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --navy: #0A1628;
+  --blue: #1E6FFF;
+  --blue-hover: #1558d6;
+  --off: #F4F6FA;
+  --off2: #EBEEF5;
+  --border: #D6DCEB;
+  --border-strong: #C4CCDF;
+  --text: #0A1628;
+  --text-2: #4A5578;
+  --text-3: #8892AA;
+  --green: #12B76A;
+  --amber: #F79009;
+  --red: #F04438;
+  --purple: #7C3AED;
+}
