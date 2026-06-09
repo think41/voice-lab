@@ -2521,6 +2521,7 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -2541,6 +2542,7 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.1" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.36" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32.0" },
+    { name = "websockets", specifier = ">=15.0.0" },
 ]
 
 [package.metadata.requires-dev]
