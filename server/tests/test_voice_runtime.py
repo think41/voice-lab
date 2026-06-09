@@ -18,3 +18,8 @@ def test_build_adk_app_uses_ui_config() -> None:
     app = runtime.build_adk_app(config)
     assert app.name == 'voicelab'
     assert app.root_agent.name == 'hotel_booking'
+
+
+def test_elevenlabs_voice_mapping() -> None:
+    runtime = PipecatAdkRuntime()
+    assert runtime._elevenlabs_voice_id('Rachel') == '21m00Tcm4TlvDq8ikWAM'

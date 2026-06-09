@@ -79,6 +79,7 @@ STT_API_KEY=your-stt-provider-key
 
 TTS_PROVIDER=elevenlabs
 TTS_API_KEY=your-tts-provider-key
+ELEVENLABS_VOICE_ID_RACHEL=21m00Tcm4TlvDq8ikWAM
 
 CORS_ORIGINS=http://localhost:5173,http://localhost:5174
 ```
@@ -233,5 +234,5 @@ If FastAPI is using another port, set `VITE_API_TARGET` when starting the client
 - The reference HTML design has been converted into React components.
 - Agent configuration, persistence APIs, Postgres models, migrations, and ADK session-service wiring are implemented.
 - `pipecat-adk` is installed directly from its GitHub repository.
-- The test-call WebSocket provides session setup, runtime validation, and event-transport scaffolding.
-- Complete microphone audio streaming, production STT/TTS pipelines, and deployment execution remain follow-up work.
+- The test-call WebSocket creates sessions, validates runtime configuration, synthesizes the saved first message with ElevenLabs, and sends browser-playable audio.
+- Complete microphone audio streaming, STT-driven user turns, continuous TTS responses, and deployment execution remain follow-up work.

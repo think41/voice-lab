@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db import get_db_session
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.run_repository import RunRepository
+from app.schemas.agent import AgentConfig
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 
 router = APIRouter(prefix="/test-call", tags=["test-call"])
@@ -43,7 +44,7 @@ async def create_test_session(
 
 
 @router.websocket("/ws/{run_id}")
-async def test_call_socket(websocket: WebSocket, run_id: str) -> None:
+async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDep) -> None:
     await websocket.accept()
     runtime = PipecatAdkRuntime()
     await websocket.send_json({"type": "session.ready", "run_id": run_id})
@@ -55,6 +56,13 @@ async def test_call_socket(websocket: WebSocket, run_id: str) -> None:
             elif message.get("type") == "start":
                 await runtime.validate_environment()
                 await websocket.send_json({"type": "runtime.ready"})
+                run = await RunRepository(session).get(run_id)
+                if run is None:
+                    raise RuntimeError("Test run not found")
+                event = await runtime.synthesize_first_message(
+                    AgentConfig.model_validate(run.agent.config)
+                )
+                await websocket.send_json({"type": event.type, **event.payload})
             else:
                 await websocket.send_json({"type": "event.echo", "payload": message})
     except WebSocketDisconnect:

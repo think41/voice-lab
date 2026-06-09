@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     stt_api_key: str | None = None
     tts_provider: str = "elevenlabs"
     tts_api_key: str | None = None
+    elevenlabs_voice_id_rachel: str = "21m00Tcm4TlvDq8ikWAM"
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
 
     @property

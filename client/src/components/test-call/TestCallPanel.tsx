@@ -15,6 +15,7 @@ interface TestCallPanelProps {
 
 export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
   const socketRef = useRef<WebSocket | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +37,23 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
         setActive(true);
         socket.send(JSON.stringify({ type: 'start' }));
       };
-      socket.onmessage = (message) => setEvents((current) => [...current, message.data]);
+      socket.onmessage = (message) => {
+        setEvents((current) => [...current, message.data]);
+        const event = JSON.parse(message.data) as {
+          type?: string;
+          audio_base64?: string;
+          mime_type?: string;
+        };
+        if (event.type === 'audio.output' && event.audio_base64) {
+          audioRef.current?.pause();
+          audioRef.current = new Audio(
+            `data:${event.mime_type ?? 'audio/mpeg'};base64,${event.audio_base64}`
+          );
+          void audioRef.current.play().catch(() => {
+            setError('Browser blocked audio playback. Press Start again or allow site audio.');
+          });
+        }
+      };
       socket.onclose = () => setActive(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start test call.');
@@ -46,6 +63,8 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
   const stop = () => {
     socketRef.current?.close();
     socketRef.current = null;
+    audioRef.current?.pause();
+    audioRef.current = null;
     setActive(false);
   };
 

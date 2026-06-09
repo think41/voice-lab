@@ -18,6 +18,14 @@ class RunRepository:
         )
         return list(result.scalars())
 
+    async def get(self, run_id: str) -> RunRecord | None:
+        result = await self.session.execute(
+            select(RunRecord)
+            .options(selectinload(RunRecord.agent))
+            .where(RunRecord.id == run_id)
+        )
+        return result.scalar_one_or_none()
+
     async def create(self, agent_id: str, adk_session_id: str) -> RunRecord:
         record = RunRecord(agent_id=agent_id, adk_session_id=adk_session_id)
         self.session.add(record)
