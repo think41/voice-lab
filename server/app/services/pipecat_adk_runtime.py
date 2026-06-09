@@ -72,7 +72,20 @@ class PipecatAdkRuntime(VoiceRuntime):
                     "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
                 },
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                status_code = exc.response.status_code
+                logger.error("elevenlabs tts failed status=%d", status_code)
+                if status_code in {401, 403}:
+                    raise RuntimeError(
+                        "ElevenLabs rejected TTS_API_KEY. Replace it with a valid "
+                        "ElevenLabs API key and restart the FastAPI server."
+                    ) from exc
+                detail = exc.response.text[:240]
+                raise RuntimeError(
+                    f"ElevenLabs TTS failed with HTTP {status_code}: {detail}"
+                ) from exc
         logger.info("elevenlabs tts response bytes=%d", len(response.content))
 
         return RuntimeEvent(
