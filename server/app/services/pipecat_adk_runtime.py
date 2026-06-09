@@ -25,13 +25,19 @@ class PipecatAdkRuntime(VoiceRuntime):
         )
         return App(name="voicelab", root_agent=agent, plugins=[AdkInterruptionPlugin()])
 
-    async def run_test_call(self, config: AgentConfig, session_id: str) -> AsyncIterator[RuntimeEvent]:
+    async def run_test_call(
+        self, config: AgentConfig, session_id: str
+    ) -> AsyncIterator[RuntimeEvent]:
         await self.validate_environment()
         app = self.build_adk_app(config)
         session_service = create_adk_session_service()
         yield RuntimeEvent(
             type="adk.ready",
-            payload={"app_name": app.name, "session_id": session_id, "session_service": str(session_service)},
+            payload={
+                "app_name": app.name,
+                "session_id": session_id,
+                "session_service": str(session_service),
+            },
         )
 
     def _normalize_agent_name(self, value: str) -> str:

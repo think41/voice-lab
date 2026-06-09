@@ -25,7 +25,9 @@ class RunRepository:
         await self.session.refresh(record)
         return record
 
-    async def append_trace(self, run_id: str, sequence: int, event_type: str, payload: dict) -> None:
+    async def append_trace(
+        self, run_id: str, sequence: int, event_type: str, payload: dict
+    ) -> None:
         self.session.add(
             TraceEventRecord(
                 run_id=run_id,

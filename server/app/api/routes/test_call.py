@@ -1,3 +1,4 @@
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -10,6 +11,7 @@ from app.repositories.run_repository import RunRepository
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 
 router = APIRouter(prefix="/test-call", tags=["test-call"])
+SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 class TestSessionCreate(BaseModel):
@@ -25,7 +27,7 @@ class TestSessionRead(BaseModel):
 
 @router.post("/session", response_model=TestSessionRead, status_code=201)
 async def create_test_session(
-    payload: TestSessionCreate, session: AsyncSession = Depends(get_db_session)
+    payload: TestSessionCreate, session: SessionDep
 ) -> TestSessionRead:
     agent = await AgentRepository(session).get(payload.agent_id)
     if agent is None:

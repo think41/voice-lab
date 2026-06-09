@@ -1,3 +1,5 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,10 +8,11 @@ from app.repositories.run_repository import RunRepository
 from app.schemas.run import RunRead, TraceEventRead
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 @router.get("", response_model=list[RunRead])
-async def list_runs(session: AsyncSession = Depends(get_db_session)) -> list[RunRead]:
+async def list_runs(session: SessionDep) -> list[RunRead]:
     records = await RunRepository(session).list()
     return [
         RunRead(

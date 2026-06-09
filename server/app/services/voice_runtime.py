@@ -18,5 +18,7 @@ class VoiceRuntime(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def run_test_call(self, config: AgentConfig, session_id: str) -> AsyncIterator[RuntimeEvent]:
+    async def run_test_call(
+        self, config: AgentConfig, session_id: str
+    ) -> AsyncIterator[RuntimeEvent]:
         raise NotImplementedError
