@@ -85,7 +85,7 @@ async def create_text_turn(
     if not settings.gemini_api_key:
         raise HTTPException(status_code=400, detail="GEMINI_API_KEY is required for text chat")
 
-    trace_count = len(run.trace_events)
+    trace_count = await run_repository.max_trace_sequence(run_id)
 
     async def record_trace(event_type: str, trace_payload: dict[str, Any]) -> None:
         nonlocal trace_count

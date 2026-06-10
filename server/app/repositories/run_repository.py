@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,9 +20,7 @@ class RunRepository:
 
     async def get(self, run_id: str) -> RunRecord | None:
         result = await self.session.execute(
-            select(RunRecord)
-            .options(selectinload(RunRecord.agent))
-            .where(RunRecord.id == run_id)
+            select(RunRecord).options(selectinload(RunRecord.agent)).where(RunRecord.id == run_id)
         )
         return result.scalar_one_or_none()
 
@@ -45,3 +43,9 @@ class RunRepository:
             )
         )
         await self.session.commit()
+
+    async def max_trace_sequence(self, run_id: str) -> int:
+        result = await self.session.execute(
+            select(func.max(TraceEventRecord.sequence)).where(TraceEventRecord.run_id == run_id)
+        )
+        return result.scalar_one_or_none() or 0
