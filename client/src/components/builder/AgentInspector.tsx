@@ -12,7 +12,7 @@ interface AgentInspectorProps {
   onClose: () => void;
 }
 
-const modelOptions = [{ value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }];
+const modelOptions = [{ value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' }];
 const sttProviderOptions = [{ value: 'deepgram', label: 'Deepgram' }];
 const sttModelOptions = [{ value: 'nova-2', label: 'Nova-2' }];
 const ttsProviderOptions = [{ value: 'deepgram', label: 'Deepgram' }];

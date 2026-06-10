@@ -11,7 +11,7 @@ class ToolConfig(BaseModel):
 
 class AgentConfig(BaseModel):
     name: str = "Untitled Agent"
-    model: str = "gemini-2.0-flash"
+    model: str = "gemini-2.5-flash"
     instruction: str = "You are a helpful voice assistant."
     stt_provider: str = "deepgram"
     stt_model: str = "nova-2"

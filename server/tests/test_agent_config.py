@@ -6,7 +6,7 @@ from app.schemas.agent import AgentConfig
 def test_agent_config_defaults() -> None:
     config = AgentConfig(name='Support Agent')
     assert config.name == 'Support Agent'
-    assert config.model == 'gemini-2.0-flash'
+    assert config.model == 'gemini-2.5-flash'
     assert config.temperature == 0.4
 
 
