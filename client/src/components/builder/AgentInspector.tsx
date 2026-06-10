@@ -15,8 +15,8 @@ interface AgentInspectorProps {
 const modelOptions = [{ value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash' }];
 const sttProviderOptions = [{ value: 'deepgram', label: 'Deepgram' }];
 const sttModelOptions = [{ value: 'nova-2', label: 'Nova-2' }];
-const ttsProviderOptions = [{ value: 'elevenlabs', label: 'ElevenLabs' }];
-const voiceOptions = [{ value: 'Rachel', label: 'Rachel' }];
+const ttsProviderOptions = [{ value: 'deepgram', label: 'Deepgram' }];
+const voiceOptions = [{ value: 'aura-asteria-en', label: 'Aura Asteria' }];
 
 export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspectorProps) {
   const update = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) => onChange({ ...config, [key]: value });

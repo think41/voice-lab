@@ -6,8 +6,8 @@ export const defaultAgentConfig: AgentConfig = {
   instruction: 'You are a concise hotel booking voice assistant. Ask for dates, room type, guest count, and confirm before booking.',
   stt_provider: 'deepgram',
   stt_model: 'nova-2',
-  tts_provider: 'elevenlabs',
-  tts_voice: 'Rachel',
+  tts_provider: 'deepgram',
+  tts_voice: 'aura-asteria-en',
   temperature: 0.4,
   first_message: 'Hi, this is VoiceLab. How can I help with your hotel booking?',
   tools: [

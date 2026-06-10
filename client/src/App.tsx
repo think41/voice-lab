@@ -16,6 +16,15 @@ import { SettingsView } from './views/SettingsView';
 
 type View = 'builder' | 'runs' | 'reports' | 'settings';
 
+function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
+  return {
+    ...config,
+    stt_provider: 'deepgram',
+    tts_provider: 'deepgram',
+    tts_voice: config.tts_voice === 'Rachel' ? 'aura-asteria-en' : config.tts_voice,
+  };
+}
+
 export default function App() {
   const [view, setView] = useState<View>('builder');
   const [agents, setAgents] = useState<AgentRecord[]>([]);
@@ -34,7 +43,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (selectedAgent) setDraftConfig(selectedAgent.config);
+    if (selectedAgent) setDraftConfig(normalizeVoiceConfig(selectedAgent.config));
   }, [selectedAgent]);
 
   const notify = (message: string) => {
@@ -62,7 +71,8 @@ export default function App() {
 
   const saveConfig = async () => {
     try {
-      const saved = selectedAgentId ? await updateAgent(selectedAgentId, draftConfig) : await createAgent(draftConfig);
+      const config = normalizeVoiceConfig(draftConfig);
+      const saved = selectedAgentId ? await updateAgent(selectedAgentId, config) : await createAgent(config);
       setSelectedAgentId(saved.id);
       setAgents((current) => {
         const exists = current.some((agent) => agent.id === saved.id);

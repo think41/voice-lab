@@ -1,4 +1,4 @@
-export type Provider = 'deepgram' | 'google' | 'elevenlabs' | 'cartesia';
+export type Provider = 'deepgram';
 
 export interface ToolConfig {
   name: string;

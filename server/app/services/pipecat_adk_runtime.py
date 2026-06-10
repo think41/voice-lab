@@ -27,10 +27,10 @@ class PipecatAdkRuntime(VoiceRuntime):
             raise RuntimeError(f"Unsupported STT provider: {settings.stt_provider}")
         if not settings.stt_api_key:
             raise RuntimeError("STT_API_KEY is required to transcribe microphone audio")
-        if settings.tts_provider != "elevenlabs":
+        if settings.tts_provider != "deepgram":
             raise RuntimeError(f"Unsupported TTS provider: {settings.tts_provider}")
-        if not settings.tts_api_key:
-            raise RuntimeError("TTS_API_KEY is required to speak agent responses")
+        if not self._deepgram_tts_api_key():
+            raise RuntimeError("STT_API_KEY or TTS_API_KEY is required to speak agent responses")
         logger.info(
             "voice runtime validated gemini_key=%s stt_provider=%s stt_key=%s "
             "tts_provider=%s tts_key=%s",
@@ -45,48 +45,42 @@ class PipecatAdkRuntime(VoiceRuntime):
         return await self.synthesize_text(config, config.first_message)
 
     async def synthesize_text(self, config: AgentConfig, text: str) -> RuntimeEvent:
-        settings = get_settings()
-        if config.tts_provider != "elevenlabs":
-            raise RuntimeError(f"Unsupported TTS provider: {config.tts_provider}")
-        if not settings.tts_api_key:
-            raise RuntimeError("TTS_API_KEY is required to speak agent responses")
+        api_key = self._deepgram_tts_api_key()
+        if not api_key:
+            raise RuntimeError("STT_API_KEY or TTS_API_KEY is required to speak agent responses")
 
-        voice_id = self._elevenlabs_voice_id(config.tts_voice)
+        voice_model = self._deepgram_voice_model(config.tts_voice)
         logger.info(
-            "elevenlabs tts request voice=%s voice_id=%s text_chars=%d",
-            config.tts_voice,
-            voice_id,
+            "deepgram tts request voice_model=%s text_chars=%d",
+            voice_model,
             len(text),
         )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                "https://api.deepgram.com/v1/speak",
+                params={"model": voice_model},
                 headers={
                     "Accept": "audio/mpeg",
                     "Content-Type": "application/json",
-                    "xi-api-key": settings.tts_api_key,
+                    "Authorization": f"Token {api_key}",
                 },
-                json={
-                    "text": text,
-                    "model_id": "eleven_turbo_v2_5",
-                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-                },
+                json={"text": text},
             )
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 status_code = exc.response.status_code
-                logger.error("elevenlabs tts failed status=%d", status_code)
+                logger.error("deepgram tts failed status=%d", status_code)
                 if status_code in {401, 403}:
                     raise RuntimeError(
-                        "ElevenLabs rejected TTS_API_KEY. Replace it with a valid "
-                        "ElevenLabs API key and restart the FastAPI server."
+                        "Deepgram rejected the TTS key. Check STT_API_KEY/TTS_API_KEY "
+                        "and restart the FastAPI server."
                     ) from exc
                 detail = exc.response.text[:240]
                 raise RuntimeError(
-                    f"ElevenLabs TTS failed with HTTP {status_code}: {detail}"
+                    f"Deepgram TTS failed with HTTP {status_code}: {detail}"
                 ) from exc
-        logger.info("elevenlabs tts response bytes=%d", len(response.content))
+        logger.info("deepgram tts response bytes=%d", len(response.content))
 
         return RuntimeEvent(
             type="audio.output",
@@ -187,8 +181,11 @@ class PipecatAdkRuntime(VoiceRuntime):
         normalized = "".join(char.lower() if char.isalnum() else "_" for char in value).strip("_")
         return normalized or "voicelab_agent"
 
-    def _elevenlabs_voice_id(self, voice: str) -> str:
+    def _deepgram_tts_api_key(self) -> str | None:
         settings = get_settings()
-        if voice == "Rachel":
-            return settings.elevenlabs_voice_id_rachel
-        raise RuntimeError(f"Unsupported ElevenLabs voice: {voice}")
+        return settings.stt_api_key or settings.tts_api_key
+
+    def _deepgram_voice_model(self, voice: str) -> str:
+        if voice in {"aura-asteria-en", "Rachel"}:
+            return "aura-asteria-en"
+        raise RuntimeError(f"Unsupported Deepgram voice: {voice}")

@@ -77,9 +77,8 @@ GEMINI_API_KEY=your-gemini-key
 STT_PROVIDER=deepgram
 STT_API_KEY=your-stt-provider-key
 
-TTS_PROVIDER=elevenlabs
-TTS_API_KEY=your-tts-provider-key
-ELEVENLABS_VOICE_ID_RACHEL=21m00Tcm4TlvDq8ikWAM
+TTS_PROVIDER=deepgram
+TTS_API_KEY=optional-deepgram-tts-key
 
 CORS_ORIGINS=http://localhost:5173,http://localhost:5174
 ```
@@ -234,5 +233,5 @@ If FastAPI is using another port, set `VITE_API_TARGET` when starting the client
 - The reference HTML design has been converted into React components.
 - Agent configuration, persistence APIs, Postgres models, migrations, and ADK session-service wiring are implemented.
 - `pipecat-adk` is installed directly from its GitHub repository.
-- The test-call WebSocket creates sessions, validates runtime configuration, synthesizes the saved first message with ElevenLabs, and sends browser-playable audio.
-- Complete microphone audio streaming, STT-driven user turns, continuous TTS responses, and deployment execution remain follow-up work.
+- The test-call WebSocket creates sessions, streams microphone audio to Deepgram STT, sends final transcripts through ADK, and returns Deepgram TTS audio to the browser.
+- Deployment execution remains follow-up work.

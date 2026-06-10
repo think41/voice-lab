@@ -15,8 +15,8 @@ class AgentConfig(BaseModel):
     instruction: str = "You are a helpful voice assistant."
     stt_provider: str = "deepgram"
     stt_model: str = "nova-2"
-    tts_provider: str = "elevenlabs"
-    tts_voice: str = "Rachel"
+    tts_provider: str = "deepgram"
+    tts_voice: str = "aura-asteria-en"
     temperature: float = Field(default=0.4, ge=0, le=2)
     first_message: str = "Hi, how can I help?"
     tools: list[ToolConfig] = Field(default_factory=list)

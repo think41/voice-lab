@@ -12,9 +12,8 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     stt_provider: str = "deepgram"
     stt_api_key: str | None = None
-    tts_provider: str = "elevenlabs"
+    tts_provider: str = "deepgram"
     tts_api_key: str | None = None
-    elevenlabs_voice_id_rachel: str = "21m00Tcm4TlvDq8ikWAM"
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
 
     @property
