@@ -100,7 +100,7 @@ export default function App() {
         {view === 'reports' ? <ReportsView /> : null}
         {view === 'settings' ? <SettingsView /> : null}
       </Workspace>
-      <TestCallPanel agentId={selectedAgentId} open={testCallOpen} onClose={() => setTestCallOpen(false)} />
+      <TestCallPanel agentId={selectedAgentId} open={testCallOpen} onClose={() => setTestCallOpen(false)} onSessionUpdated={() => void refreshRuns()} />
       <Modal open={deployOpen} title="Deploy VoiceLab agent" subtitle="Deployment execution is intentionally outside the first implementation pass." onClose={() => setDeployOpen(false)} />
       <Toast message={toast} />
     </div>

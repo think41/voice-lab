@@ -11,6 +11,7 @@ interface TestCallPanelProps {
   agentId: string | null;
   open: boolean;
   onClose: () => void;
+  onSessionUpdated: () => void;
 }
 
 type TestMode = 'voice' | 'text';
@@ -24,7 +25,7 @@ type RuntimeMessage = {
   sample_rate?: number;
 };
 
-export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
+export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: TestCallPanelProps) {
   const socketRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -128,6 +129,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
       socket.onclose = () => {
         setActive(false);
         appendEvent('session.closed');
+        onSessionUpdated();
         void cleanupAudioInput();
       };
     } catch (err) {
@@ -151,6 +153,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
       setRunId(session.run_id);
       setActive(true);
       appendEvent(`chat.open ${session.run_id}`);
+      onSessionUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start chat session.');
     }
@@ -166,6 +169,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
     try {
       const turn = await createTextTurn(runId, message);
       appendEvent(`agent: ${turn.assistant_text}`);
+      onSessionUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to send message.');
     } finally {
@@ -183,6 +187,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
     audioRef.current = null;
     setAudioSrc(null);
     setActive(false);
+    onSessionUpdated();
     void cleanupAudioInput();
   };
 
