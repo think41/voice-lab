@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 from typing import Annotated, Any
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -67,15 +68,27 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
     config: AgentConfig | None = None
     adk_session_id: str | None = None
     user_id = "local-user"
+    last_final_transcript = ""
+    last_final_transcript_at = 0.0
 
     async def send_json(payload: dict[str, Any]) -> None:
         async with send_lock:
             await websocket.send_json(payload)
 
     async def handle_final_transcript(transcript: str) -> None:
+        nonlocal last_final_transcript, last_final_transcript_at
         if config is None or adk_session_id is None:
             logger.warning("test-call transcript ignored before runtime start run_id=%s", run_id)
             return
+        transcript = transcript.strip()
+        now = time.monotonic()
+        if transcript == last_final_transcript and now - last_final_transcript_at < 5:
+            logger.info(
+                "test-call duplicate transcript ignored run_id=%s text=%s", run_id, transcript
+            )
+            return
+        last_final_transcript = transcript
+        last_final_transcript_at = now
         logger.info(
             "test-call final transcript run_id=%s chars=%d text=%s",
             run_id,

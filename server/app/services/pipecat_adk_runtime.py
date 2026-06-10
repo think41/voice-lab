@@ -124,19 +124,30 @@ class PipecatAdkRuntime(VoiceRuntime):
         message = types.Content(role="user", parts=[types.Part(text=user_text)])
         response_parts: list[str] = []
         logger.info("adk turn start session_id=%s transcript_chars=%d", session_id, len(user_text))
-        async for event in runner.run_async(
-            user_id=user_id,
-            session_id=session_id,
-            invocation_id=f"voice-{uuid4()}",
-            new_message=message,
-        ):
-            event_text = self._event_text(event)
-            if event_text:
-                response_parts.append(event_text)
-            if getattr(event, "error_message", None):
-                logger.error(
-                    "adk event error session_id=%s error=%s", session_id, event.error_message
-                )
+        try:
+            async for event in runner.run_async(
+                user_id=user_id,
+                session_id=session_id,
+                invocation_id=f"voice-{uuid4()}",
+                new_message=message,
+            ):
+                event_text = self._event_text(event)
+                if event_text:
+                    response_parts.append(event_text)
+                if getattr(event, "error_message", None):
+                    logger.error(
+                        "adk event error session_id=%s error=%s", session_id, event.error_message
+                    )
+        except Exception as exc:
+            message_text = str(exc)
+            if "RESOURCE_EXHAUSTED" in message_text or "429" in message_text:
+                logger.error("adk quota exhausted session_id=%s", session_id)
+                raise RuntimeError(
+                    "Gemini quota is exhausted for the configured API key/model. "
+                    "Use a key with available quota or switch to a model/project with quota, "
+                    "then restart the FastAPI server."
+                ) from exc
+            raise
         response_text = "".join(response_parts).strip()
         if not response_text:
             response_text = "I heard you, but I could not produce a response."
