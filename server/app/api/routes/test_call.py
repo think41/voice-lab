@@ -98,13 +98,41 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
 
     async def listen_to_deepgram(connection: ClientConnection) -> None:
         final_segments: list[str] = []
+        latest_partial = ""
+        finalize_task: asyncio.Task[None] | None = None
+
+        async def flush_transcript() -> None:
+            nonlocal latest_partial
+            utterance = " ".join(final_segments).strip() or latest_partial.strip()
+            final_segments.clear()
+            latest_partial = ""
+            if utterance:
+                await handle_final_transcript(utterance)
+
+        def schedule_partial_flush() -> None:
+            nonlocal finalize_task
+
+            async def delayed_flush() -> None:
+                await asyncio.sleep(1.1)
+                await flush_transcript()
+
+            if finalize_task is not None and not finalize_task.done():
+                finalize_task.cancel()
+            finalize_task = asyncio.create_task(delayed_flush())
+
         try:
             async for raw in connection:
                 data = json.loads(raw)
                 event_type = data.get("type")
+                if event_type == "UtteranceEnd":
+                    if finalize_task is not None and not finalize_task.done():
+                        finalize_task.cancel()
+                    await flush_transcript()
+                    continue
                 if event_type and event_type != "Results":
                     logger.debug("deepgram event run_id=%s type=%s", run_id, event_type)
                     continue
+
                 alternatives = data.get("channel", {}).get("alternatives", [])
                 transcript = (alternatives[0].get("transcript") if alternatives else "") or ""
                 transcript = transcript.strip()
@@ -112,18 +140,24 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                     continue
                 if data.get("is_final"):
                     final_segments.append(transcript)
-                else:
+                    latest_partial = ""
+                    schedule_partial_flush()
+                elif transcript != latest_partial:
+                    latest_partial = transcript
                     await send_json({"type": "transcript.partial", "text": transcript})
-                if data.get("speech_final") and final_segments:
-                    utterance = " ".join(final_segments).strip()
-                    final_segments.clear()
-                    if utterance:
-                        await handle_final_transcript(utterance)
+                    schedule_partial_flush()
+                if data.get("speech_final"):
+                    if finalize_task is not None and not finalize_task.done():
+                        finalize_task.cancel()
+                    await flush_transcript()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.exception("deepgram listener failed run_id=%s", run_id)
             await send_json({"type": "runtime.error", "message": str(exc)})
+        finally:
+            if finalize_task is not None and not finalize_task.done():
+                finalize_task.cancel()
 
     try:
         await send_json({"type": "session.ready", "run_id": run_id})
@@ -223,6 +257,7 @@ async def _open_deepgram_stream(config: AgentConfig, sample_rate: int) -> Client
             "punctuate": "true",
             "smart_format": "true",
             "endpointing": "300",
+            "utterance_end_ms": "1000",
         }
     )
     logger.info("deepgram stream opening model=%s sample_rate=%d", config.stt_model, sample_rate)
