@@ -5,6 +5,7 @@ from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 def test_agent_name_normalization() -> None:
     runtime = PipecatAdkRuntime()
     assert runtime._normalize_agent_name("Hotel Booking Agent") == "hotel_booking_agent"
+    assert runtime._normalize_agent_name("41") == "agent_41"
     assert runtime._normalize_agent_name("---") == "voicelab_agent"
 
 

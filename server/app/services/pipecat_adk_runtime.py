@@ -190,7 +190,11 @@ class PipecatAdkRuntime(VoiceRuntime):
 
     def _normalize_agent_name(self, value: str) -> str:
         normalized = "".join(char.lower() if char.isalnum() else "_" for char in value).strip("_")
-        return normalized or "voicelab_agent"
+        if not normalized:
+            return "voicelab_agent"
+        if normalized[0].isdigit():
+            return f"agent_{normalized}"
+        return normalized
 
     def _deepgram_tts_api_key(self) -> str | None:
         settings = get_settings()
