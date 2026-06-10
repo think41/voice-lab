@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentRecord, RunRecord, TestSession } from './types';
+import type { AgentConfig, AgentRecord, RunRecord, TestSession, TextTurn } from './types';
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -40,5 +40,14 @@ export async function createTestSession(agentId: string): Promise<TestSession> {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify({ agent_id: agentId })
+  });
+}
+
+
+export async function createTextTurn(runId: string, message: string): Promise<TextTurn> {
+  return request<TextTurn>(`/api/test-call/session/${runId}/text`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ message })
   });
 }

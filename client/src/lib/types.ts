@@ -49,3 +49,9 @@ export interface RunRecord {
   created_at: string;
   trace_events: TraceEvent[];
 }
+
+export interface TextTurn {
+  run_id: string;
+  user_text: string;
+  assistant_text: string;
+}

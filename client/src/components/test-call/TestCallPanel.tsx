@@ -1,7 +1,7 @@
-import { Mic, PhoneOff } from 'lucide-react';
+import { MessageSquare, Mic, PhoneOff, Send } from 'lucide-react';
 import { useRef, useState } from 'react';
 
-import { createTestSession } from '../../lib/api';
+import { createTestSession, createTextTurn } from '../../lib/api';
 import { websocketUrl } from '../../lib/websocket';
 import { Button } from '../ui/Button';
 import { AudioMeter } from './AudioMeter';
@@ -12,6 +12,8 @@ interface TestCallPanelProps {
   open: boolean;
   onClose: () => void;
 }
+
+type TestMode = 'voice' | 'text';
 
 type RuntimeMessage = {
   type?: string;
@@ -30,10 +32,14 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  const [mode, setMode] = useState<TestMode>('voice');
+  const [runId, setRunId] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
   const [active, setActive] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
+  const [textMessage, setTextMessage] = useState('');
 
   if (!open) return null;
 
@@ -77,7 +83,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
     gainRef.current = gain;
   };
 
-  const start = async () => {
+  const startVoice = async () => {
     if (!agentId) {
       setError('Save an agent before starting a test call.');
       return;
@@ -85,6 +91,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
     setError(null);
     setAudioSrc(null);
     setEvents([]);
+    setRunId(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new AudioContext();
@@ -92,6 +99,7 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
       audioContextRef.current = audioContext;
 
       const session = await createTestSession(agentId);
+      setRunId(session.run_id);
       const socket = new WebSocket(websocketUrl(session.websocket_url));
       socketRef.current = socket;
       socket.onopen = () => {
@@ -128,6 +136,43 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
     }
   };
 
+  const startText = async () => {
+    if (!agentId) {
+      setError('Save an agent before starting a chat session.');
+      return;
+    }
+    stop();
+    setMode('text');
+    setError(null);
+    setAudioSrc(null);
+    setEvents([]);
+    try {
+      const session = await createTestSession(agentId);
+      setRunId(session.run_id);
+      setActive(true);
+      appendEvent(`chat.open ${session.run_id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to start chat session.');
+    }
+  };
+
+  const sendText = async () => {
+    const message = textMessage.trim();
+    if (!message || !runId) return;
+    setSending(true);
+    setError(null);
+    setTextMessage('');
+    appendEvent(`you: ${message}`);
+    try {
+      const turn = await createTextTurn(runId, message);
+      appendEvent(`agent: ${turn.assistant_text}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to send message.');
+    } finally {
+      setSending(false);
+    }
+  };
+
   const stop = () => {
     if (socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'stop' }));
@@ -147,21 +192,44 @@ export function TestCallPanel({ agentId, open, onClose }: TestCallPanelProps) {
   };
 
   return (
-    <div className="absolute right-4 top-[68px] z-40 w-[360px] rounded-xl border border-line bg-white shadow-panel">
+    <div className="absolute right-4 top-[68px] z-40 w-[380px] rounded-xl border border-line bg-white shadow-panel">
       <div className="flex items-center justify-between border-b border-line px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold">Test call</h2>
+          <h2 className="text-sm font-semibold">Test agent</h2>
           <p className="text-[11px] text-faint">Runs the latest saved UI agent config.</p>
         </div>
         <button className="text-faint hover:text-text" onClick={closePanel}>Close</button>
       </div>
       <div className="space-y-4 p-4">
-        <AudioMeter active={active} />
+        <div className="grid grid-cols-2 rounded-lg border border-line bg-off p-1 text-xs font-semibold">
+          <button className={`rounded-md px-2 py-1.5 ${mode === 'voice' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('voice')}>Voice</button>
+          <button className={`rounded-md px-2 py-1.5 ${mode === 'text' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('text')}>Text</button>
+        </div>
+        {mode === 'voice' ? <AudioMeter active={active} /> : null}
         <TranscriptStream events={events} />
+        {mode === 'text' ? (
+          <div className="flex gap-2">
+            <input
+              className="min-w-0 flex-1 rounded-md border border-line px-3 py-2 text-xs outline-none focus:border-primary"
+              value={textMessage}
+              placeholder={runId ? 'Type a message...' : 'Start text chat first'}
+              disabled={!runId || sending}
+              onChange={(event) => setTextMessage(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void sendText();
+              }}
+            />
+            <Button variant="primary" icon={<Send size={14} />} onClick={sendText} disabled={!runId || sending || !textMessage.trim()}>Send</Button>
+          </div>
+        ) : null}
         {audioSrc ? <audio className="w-full" controls src={audioSrc} /> : null}
         {error ? <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-danger">{error}</div> : null}
         <div className="flex gap-2">
-          <Button className="flex-1" variant="primary" icon={<Mic size={14} />} onClick={start} disabled={active}>Start</Button>
+          {mode === 'voice' ? (
+            <Button className="flex-1" variant="primary" icon={<Mic size={14} />} onClick={startVoice} disabled={active}>Start voice</Button>
+          ) : (
+            <Button className="flex-1" variant="primary" icon={<MessageSquare size={14} />} onClick={startText} disabled={active}>Start text</Button>
+          )}
           <Button className="flex-1" variant="danger" icon={<PhoneOff size={14} />} onClick={stop}>Stop</Button>
         </div>
       </div>

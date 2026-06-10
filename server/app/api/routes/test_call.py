@@ -56,6 +56,64 @@ async def create_test_session(payload: TestSessionCreate, session: SessionDep) -
     )
 
 
+class TextTurnCreate(BaseModel):
+    message: str
+    user_id: str = "local-user"
+
+
+class TextTurnRead(BaseModel):
+    run_id: str
+    user_text: str
+    assistant_text: str
+
+
+@router.post("/session/{run_id}/text", response_model=TextTurnRead)
+async def create_text_turn(
+    run_id: str, payload: TextTurnCreate, session: SessionDep
+) -> TextTurnRead:
+    message = payload.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message is required")
+
+    run_repository = RunRepository(session)
+    run = await run_repository.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    runtime = PipecatAdkRuntime()
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        raise HTTPException(status_code=400, detail="GEMINI_API_KEY is required for text chat")
+
+    trace_count = len(run.trace_events)
+
+    async def record_trace(event_type: str, trace_payload: dict[str, Any]) -> None:
+        nonlocal trace_count
+        trace_count += 1
+        await run_repository.append_trace(
+            run_id=run_id,
+            sequence=trace_count,
+            event_type=event_type,
+            payload=trace_payload,
+        )
+
+    config = AgentConfig.model_validate(run.agent.config)
+    await record_trace("transcript.final", {"role": "user", "text": message, "mode": "text"})
+    try:
+        assistant_text = await runtime.generate_agent_response(
+            config=config,
+            session_id=run.adk_session_id,
+            user_text=message,
+            user_id=payload.user_id,
+        )
+    except RuntimeError as exc:
+        await record_trace("runtime.error", {"message": str(exc), "source": "text_chat"})
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    await record_trace("agent.text", {"role": "assistant", "text": assistant_text, "mode": "text"})
+    return TextTurnRead(run_id=run_id, user_text=message, assistant_text=assistant_text)
+
+
 @router.websocket("/ws/{run_id}")
 async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDep) -> None:
     await websocket.accept()
