@@ -70,10 +70,21 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
     user_id = "local-user"
     last_final_transcript = ""
     last_final_transcript_at = 0.0
+    trace_sequence = 0
 
     async def send_json(payload: dict[str, Any]) -> None:
         async with send_lock:
             await websocket.send_json(payload)
+
+    async def record_trace(event_type: str, payload: dict[str, Any]) -> None:
+        nonlocal trace_sequence
+        trace_sequence += 1
+        await RunRepository(session).append_trace(
+            run_id=run_id,
+            sequence=trace_sequence,
+            event_type=event_type,
+            payload=payload,
+        )
 
     async def handle_final_transcript(transcript: str) -> None:
         nonlocal last_final_transcript, last_final_transcript_at
@@ -95,6 +106,7 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
             len(transcript),
             transcript,
         )
+        await record_trace("transcript.final", {"role": "user", "text": transcript})
         await send_json({"type": "transcript.final", "text": transcript})
         response_text = await runtime.generate_agent_response(
             config=config,
@@ -102,8 +114,17 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
             user_text=transcript,
             user_id=user_id,
         )
+        await record_trace("agent.text", {"role": "assistant", "text": response_text})
         await send_json({"type": "agent.text", "text": response_text})
         audio_event = await runtime.synthesize_text(config, response_text)
+        await record_trace(
+            "audio.output",
+            {
+                "role": "assistant",
+                "text": response_text,
+                "mime_type": audio_event.payload.get("mime_type"),
+            },
+        )
         await send_json({"type": audio_event.type, **audio_event.payload})
         logger.info(
             "test-call response audio sent run_id=%s response_chars=%d", run_id, len(response_text)
@@ -167,6 +188,7 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
             raise
         except Exception as exc:
             logger.exception("deepgram listener failed run_id=%s", run_id)
+            await record_trace("runtime.error", {"message": str(exc), "source": "deepgram"})
             await send_json({"type": "runtime.error", "message": str(exc)})
         finally:
             if finalize_task is not None and not finalize_task.done():
@@ -205,6 +227,16 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                 sample_rate = int(payload.get("sample_rate") or 48000)
                 deepgram_ws = await _open_deepgram_stream(config, sample_rate)
                 deepgram_task = asyncio.create_task(listen_to_deepgram(deepgram_ws))
+                await record_trace(
+                    "session.started",
+                    {
+                        "sample_rate": sample_rate,
+                        "stt_provider": config.stt_provider,
+                        "stt_model": config.stt_model,
+                        "tts_provider": config.tts_provider,
+                        "tts_voice": config.tts_voice,
+                    },
+                )
                 await send_json({"type": "runtime.ready", "sample_rate": sample_rate})
                 logger.info(
                     "test-call started run_id=%s agent_id=%s stt=%s/%s sample_rate=%d tts=%s/%s",
@@ -217,6 +249,14 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                     config.tts_voice,
                 )
                 first_event = await runtime.synthesize_first_message(config)
+                await record_trace(
+                    "audio.output",
+                    {
+                        "role": "assistant",
+                        "text": config.first_message,
+                        "mime_type": first_event.payload.get("mime_type"),
+                    },
+                )
                 await send_json({"type": first_event.type, **first_event.payload})
                 logger.info(
                     "test-call first message sent run_id=%s type=%s", run_id, first_event.type
@@ -239,6 +279,7 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
         logger.info("test-call websocket disconnected run_id=%s", run_id)
     except Exception as exc:
         logger.exception("test-call websocket failed run_id=%s", run_id)
+        await record_trace("runtime.error", {"message": str(exc), "source": "websocket"})
         await send_json({"type": "runtime.error", "message": str(exc)})
         await websocket.close()
     finally:
