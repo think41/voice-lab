@@ -23,5 +23,8 @@ class RunRecord(Base):
 
     agent = relationship("AgentRecord", back_populates="runs")
     trace_events = relationship(
-        "TraceEventRecord", back_populates="run", cascade="all, delete-orphan"
+        "TraceEventRecord",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        order_by="TraceEventRecord.sequence",
     )

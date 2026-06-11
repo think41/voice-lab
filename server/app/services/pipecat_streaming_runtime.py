@@ -16,7 +16,7 @@ from pipecat.frames.frames import (
     OutputAudioRawFrame,
     OutputTransportMessageFrame,
     TranscriptionFrame,
-    TTSStartedFrame,
+    TTSTextFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -77,7 +77,6 @@ class StreamingTraceBridge(FrameProcessor):
     def __init__(self, record_trace: TraceRecorder) -> None:
         super().__init__()
         self._record_trace = record_trace
-        self._assistant_text_parts: list[str] = []
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -96,17 +95,11 @@ class StreamingTraceBridge(FrameProcessor):
             await self.push_frame(
                 OutputTransportMessageFrame({"type": "agent.thinking"}), direction
             )
-            self._assistant_text_parts = []
         elif isinstance(frame, VqlLLMTextFrame):
-            self._assistant_text_parts.append(frame.text)
             await self.push_frame(
                 OutputTransportMessageFrame({"type": "agent.text.delta", "text": frame.text}),
                 direction,
             )
-        elif isinstance(frame, TTSStartedFrame):
-            text = "".join(self._assistant_text_parts).strip()
-            if text:
-                await self._record_trace("agent.text", {"role": "assistant", "text": text})
 
         await self.push_frame(frame, direction)
 
@@ -116,14 +109,23 @@ class PlaybackTraceBridge(FrameProcessor):
         super().__init__()
         self._record_trace = record_trace
         self._send_event = send_event
+        self._assistant_text_parts: list[str] = []
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
         if isinstance(frame, BotStartedSpeakingFrame):
+            self._assistant_text_parts = []
             await self._record_trace("audio.output.started", {"role": "assistant"})
             await self._send_event({"type": "audio.output.started"})
+        elif isinstance(frame, TTSTextFrame):
+            if frame.text.strip():
+                self._assistant_text_parts.append(frame.text)
         elif isinstance(frame, BotStoppedSpeakingFrame):
+            text = "".join(self._assistant_text_parts).strip()
+            if text:
+                await self._record_trace("agent.text", {"role": "assistant", "text": text})
+            self._assistant_text_parts = []
             await self._record_trace("audio.output.stopped", {"role": "assistant"})
             await self._send_event({"type": "audio.output.stopped"})
 
@@ -189,11 +191,15 @@ class PipecatStreamingRuntime:
                 utterance_end_ms="1000",
             ),
         )
+        async def normalize_tts_text(text: str, _aggregation_type: Any) -> str:
+            return helper._normalize_for_speech(text)
+
         tts = AdkDeepgramTTSService(
             api_key=tts_api_key,
             voice=voice,
             sample_rate=24000,
             encoding="linear16",
+            text_transforms=[("*", normalize_tts_text)],
         )
         async def send_event(payload: dict[str, Any]) -> None:
             await websocket.send_json(payload)
