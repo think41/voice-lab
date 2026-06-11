@@ -27,7 +27,11 @@ from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat_adk import AdkLLMService, SessionParams, VqlTTSMixin
-from pipecat_adk.frames import VqlLLMTextFrame
+from pipecat_adk.frames import (
+    VqlLLMFullResponseEndFrame,
+    VqlLLMFullResponseStartFrame,
+    VqlLLMTextFrame,
+)
 
 from app.core.config import get_settings
 from app.schemas.agent import AgentConfig
@@ -241,12 +245,20 @@ class PipecatStreamingRuntime:
         logger.info("pipecat streaming test-call started run_id=%s", run_id)
 
         if config.first_message:
+            turn_id = f"first-message-{uuid4()}"
+            invocation_id = f"voice-{uuid4()}"
+            await task.queue_frame(
+                VqlLLMFullResponseStartFrame(turn_id=turn_id, invocation_id=invocation_id)
+            )
             await task.queue_frame(
                 VqlLLMTextFrame(
                     text=config.first_message,
-                    turn_id=f"first-message-{uuid4()}",
-                    invocation_id=f"voice-{uuid4()}",
+                    turn_id=turn_id,
+                    invocation_id=invocation_id,
                 )
+            )
+            await task.queue_frame(
+                VqlLLMFullResponseEndFrame(turn_id=turn_id, invocation_id=invocation_id)
             )
 
         await runner.run(task)
