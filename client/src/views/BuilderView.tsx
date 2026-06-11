@@ -40,8 +40,8 @@ export function BuilderView({ config, onConfigChange, onSave }: BuilderViewProps
           <AgentJsonEditor config={config} onChange={onConfigChange} />
         )}
       </div>
-      {inspectorOpen ? <AgentInspector config={config} onChange={onConfigChange} onSave={onSave} onClose={() => setInspectorOpen(false)} /> : null}
       <div className="hidden w-[200px] border-l border-line bg-white xl:block"><AgentPalette /></div>
+      {inspectorOpen ? <AgentInspector config={config} onChange={onConfigChange} onSave={onSave} onClose={() => setInspectorOpen(false)} /> : null}
     </div>
   );
 }

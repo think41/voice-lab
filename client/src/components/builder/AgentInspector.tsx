@@ -20,7 +20,7 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
   const removeTool = (index: number) => update('tools', config.tools.filter((_, i) => i !== index));
 
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col border-l border-line bg-white">
+    <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-white">
       <div className="flex items-center justify-between border-b border-line px-4 py-3.5">
         <h2 className="text-[13px] font-semibold">Agent config</h2>
         <button className="rounded-md p-1 text-faint hover:bg-off hover:text-text" onClick={onClose}><X size={16} /></button>
@@ -30,7 +30,7 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
         <Field label="Model">
           <Select value={config.model} options={modelOptions} onChange={(value) => update('model', value)} />
         </Field>
-        <Field label="Instruction"><textarea rows={5} value={config.instruction} onChange={(event) => update('instruction', event.target.value)} /></Field>
+        <Field label="Instruction"><textarea rows={9} value={config.instruction} onChange={(event) => update('instruction', event.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="STT provider">
             <Select value={config.stt_provider} options={sttProviderOptions} onChange={(value) => update('stt_provider', value)} />
