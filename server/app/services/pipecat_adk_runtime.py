@@ -219,6 +219,7 @@ class PipecatAdkRuntime(VoiceRuntime):
         text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
         text = re.sub(r"__(.*?)__", r"\1", text)
         text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+        text = re.sub(r"(?m)^\s*[-*+]\s+", "", text)
         return text.strip()
 
     def _normalize_for_speech(self, text: str) -> str:
