@@ -2,6 +2,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
+from uuid import uuid4
 
 from fastapi import WebSocket
 from pipecat.frames.frames import (
@@ -219,7 +220,13 @@ class PipecatStreamingRuntime:
         logger.info("pipecat streaming test-call started run_id=%s", run_id)
 
         if config.first_message:
-            await task.queue_frame(VqlLLMTextFrame(text=config.first_message))
+            await task.queue_frame(
+                VqlLLMTextFrame(
+                    text=config.first_message,
+                    turn_id=f"first-message-{uuid4()}",
+                    invocation_id=f"voice-{uuid4()}",
+                )
+            )
 
         await runner.run(task)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
