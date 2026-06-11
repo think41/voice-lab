@@ -160,7 +160,7 @@ class PipecatAdkRuntime(VoiceRuntime):
                     "then restart the FastAPI server."
                 ) from exc
             raise
-        response_text = "".join(response_parts).strip()
+        response_text = self.clean_model_text("".join(response_parts)).strip()
         if not response_text:
             response_text = "I heard you, but I could not produce a response."
         logger.info(
@@ -215,7 +215,14 @@ class PipecatAdkRuntime(VoiceRuntime):
             return f"agent_{normalized}"
         return normalized
 
+    def clean_model_text(self, text: str) -> str:
+        text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+        text = re.sub(r"__(.*?)__", r"\1", text)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
+        return text.strip()
+
     def _normalize_for_speech(self, text: str) -> str:
+        text = self.clean_model_text(text)
         return re.sub(r"\bthink\s*41\b", "Think forty one", text, flags=re.IGNORECASE)
 
     def _deepgram_tts_api_key(self) -> str | None:
