@@ -114,11 +114,7 @@ class PipecatAdkRuntime(VoiceRuntime):
         user_text: str,
         user_id: str = "local-user",
     ) -> str:
-        settings = get_settings()
-        if settings.gemini_api_key:
-            os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
-            os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
-
+        self.configure_google_api_key()
         app = self.build_adk_app(config)
         session_service = create_adk_session_service()
         existing = await session_service.get_session(
@@ -175,12 +171,19 @@ class PipecatAdkRuntime(VoiceRuntime):
     def build_adk_app(self, config: AgentConfig) -> App:
         from pipecat_adk import AdkInterruptionPlugin
 
+        self.configure_google_api_key()
         agent = Agent(
             name=self._normalize_agent_name(config.name),
             model=config.model,
             instruction=config.instruction,
         )
         return App(name="voicelab", root_agent=agent, plugins=[AdkInterruptionPlugin()])
+
+    def configure_google_api_key(self) -> None:
+        settings = get_settings()
+        if settings.gemini_api_key:
+            os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
+            os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
 
     async def run_test_call(
         self, config: AgentConfig, session_id: str
