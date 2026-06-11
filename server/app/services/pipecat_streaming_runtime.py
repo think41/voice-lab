@@ -128,7 +128,7 @@ class PipecatStreamingRuntime:
             raise RuntimeError("GEMINI_API_KEY is required to run a streaming voice test call")
         if not settings.stt_api_key:
             raise RuntimeError("STT_API_KEY is required for streaming Deepgram STT")
-        tts_api_key = settings.tts_api_key or settings.stt_api_key
+        tts_api_key = settings.stt_api_key or settings.tts_api_key
         if not tts_api_key:
             raise RuntimeError("STT_API_KEY or TTS_API_KEY is required for streaming Deepgram TTS")
 
