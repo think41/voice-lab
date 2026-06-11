@@ -37,6 +37,10 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const gainRef = useRef<GainNode | null>(null);
   const microphoneStartedRef = useRef(false);
   const microphoneStartFallbackRef = useRef<number | null>(null);
+  const playbackEndFallbackRef = useRef<number | null>(null);
+  const activePlaybackSourcesRef = useRef(0);
+  const serverAudioStoppedRef = useRef(false);
+  const playbackStartedRef = useRef(false);
   const [mode, setMode] = useState<TestMode>('voice');
   const [runId, setRunId] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
@@ -57,9 +61,16 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       window.clearTimeout(microphoneStartFallbackRef.current);
       microphoneStartFallbackRef.current = null;
     }
+    if (playbackEndFallbackRef.current !== null) {
+      window.clearTimeout(playbackEndFallbackRef.current);
+      playbackEndFallbackRef.current = null;
+    }
   };
 
   const cleanupPlayback = async () => {
+    activePlaybackSourcesRef.current = 0;
+    serverAudioStoppedRef.current = false;
+    playbackStartedRef.current = false;
     if (playbackContextRef.current && playbackContextRef.current.state !== 'closed') {
       await playbackContextRef.current.close();
     }
@@ -67,7 +78,17 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     nextPlaybackTimeRef.current = 0;
   };
 
-  const playPcmChunk = async (chunk: ArrayBuffer) => {
+  const maybeBeginMicrophoneAfterPlayback = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
+    if (!serverAudioStoppedRef.current || activePlaybackSourcesRef.current > 0) return;
+    if (playbackStartedRef.current) appendEvent('audio.playback.ended');
+    clearMicrophoneStartFallback();
+    playbackEndFallbackRef.current = window.setTimeout(
+      () => beginMicrophoneStreaming(socket, stream, audioContext),
+      250,
+    );
+  };
+
+  const playPcmChunk = async (chunk: ArrayBuffer, socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
     if (chunk.byteLength === 0) return;
     const context = playbackContextRef.current ?? new AudioContext({ sampleRate: 24000 });
     playbackContextRef.current = context;
@@ -84,6 +105,15 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     source.buffer = buffer;
     source.connect(context.destination);
     const startAt = Math.max(context.currentTime + 0.02, nextPlaybackTimeRef.current);
+    activePlaybackSourcesRef.current += 1;
+    if (!playbackStartedRef.current) {
+      playbackStartedRef.current = true;
+      appendEvent('audio.playback.started');
+    }
+    source.onended = () => {
+      activePlaybackSourcesRef.current = Math.max(0, activePlaybackSourcesRef.current - 1);
+      maybeBeginMicrophoneAfterPlayback(socket, stream, audioContext);
+    };
     source.start(startAt);
     nextPlaybackTimeRef.current = startAt + buffer.duration;
   };
@@ -114,13 +144,8 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   };
 
   const beginMicrophoneAfterPlayback = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
-    const playbackContext = playbackContextRef.current;
-    const queuedSeconds = playbackContext ? Math.max(0, nextPlaybackTimeRef.current - playbackContext.currentTime) : 0;
-    clearMicrophoneStartFallback();
-    microphoneStartFallbackRef.current = window.setTimeout(
-      () => beginMicrophoneStreaming(socket, stream, audioContext),
-      queuedSeconds * 1000 + 250,
-    );
+    serverAudioStoppedRef.current = true;
+    maybeBeginMicrophoneAfterPlayback(socket, stream, audioContext);
   };
 
   const startStreamingMicrophone = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
@@ -153,6 +178,9 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setAudioSrc(null);
     setEvents([]);
     setRunId(null);
+    activePlaybackSourcesRef.current = 0;
+    serverAudioStoppedRef.current = false;
+    playbackStartedRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new AudioContext();
@@ -172,7 +200,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
           appendEvent('waiting.initial_greeting');
           microphoneStartFallbackRef.current = window.setTimeout(
             () => beginMicrophoneStreaming(socket, stream, audioContext),
-            10000,
+            15000,
           );
         } else {
           beginMicrophoneStreaming(socket, stream, audioContext);
@@ -180,7 +208,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       };
       socket.onmessage = (message) => {
         if (message.data instanceof ArrayBuffer) {
-          void playPcmChunk(message.data).catch(() => {
+          void playPcmChunk(message.data, socket, stream, audioContext).catch(() => {
             setError('Audio arrived, but browser playback failed.');
           });
           return;
