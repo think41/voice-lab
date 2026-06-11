@@ -5,7 +5,7 @@ import { createTestSession, createTextTurn } from '../../lib/api';
 import { websocketUrl } from '../../lib/websocket';
 import { Button } from '../ui/Button';
 import { AudioMeter } from './AudioMeter';
-import { TranscriptStream } from './TranscriptStream';
+import { ChatMessage, TranscriptStream } from './TranscriptStream';
 
 interface TestCallPanelProps {
   agentId: string | null;
@@ -43,7 +43,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const playbackStartedRef = useRef(false);
   const [mode, setMode] = useState<TestMode>('voice');
   const [runId, setRunId] = useState<string | null>(null);
-  const [events, setEvents] = useState<string[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [active, setActive] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,8 +52,49 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
 
   if (!open) return null;
 
-  const appendEvent = (event: string) => {
-    setEvents((current) => [...current.slice(-80), event]);
+  const appendLog = (event: string) => {
+    console.debug('[test-call]', event);
+  };
+
+  const appendMessage = (role: ChatMessage['role'], message: string) => {
+    const text = message.trim();
+    if (!text) return;
+    setMessages((current) => [
+      ...current,
+      { id: crypto.randomUUID(), role, text },
+    ].slice(-40));
+  };
+
+  const appendAssistantDelta = (delta: string) => {
+    const text = delta.trim();
+    if (!text) return;
+    setMessages((current) => {
+      const last = current[current.length - 1];
+      if (last?.role === 'assistant') {
+        const separator = /\s$/.test(last.text) || /^[.,!?;:]/.test(text) ? '' : ' ';
+        return [
+          ...current.slice(0, -1),
+          { ...last, text: last.text + separator + text },
+        ];
+      }
+      return [...current, { id: crypto.randomUUID(), role: 'assistant' as const, text }].slice(-40);
+    });
+  };
+
+  const handleRuntimeEvent = (event: RuntimeMessage) => {
+    if (event.type === 'transcript.final' && event.text) {
+      appendMessage('user', event.text);
+      return;
+    }
+    if (event.type === 'agent.text' && event.text) {
+      appendMessage('assistant', event.text);
+      return;
+    }
+    if (event.type === 'agent.text.delta' && event.text) {
+      appendAssistantDelta(event.text);
+      return;
+    }
+    appendLog(formatRuntimeEvent(event));
   };
 
   const clearMicrophoneStartFallback = () => {
@@ -80,7 +121,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
 
   const maybeBeginMicrophoneAfterPlayback = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
     if (!serverAudioStoppedRef.current || activePlaybackSourcesRef.current > 0) return;
-    if (playbackStartedRef.current) appendEvent('audio.playback.ended');
+    if (playbackStartedRef.current) appendLog('audio.playback.ended');
     clearMicrophoneStartFallback();
     playbackEndFallbackRef.current = window.setTimeout(
       () => beginMicrophoneStreaming(socket, stream, audioContext),
@@ -108,7 +149,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     activePlaybackSourcesRef.current += 1;
     if (!playbackStartedRef.current) {
       playbackStartedRef.current = true;
-      appendEvent('audio.playback.started');
+      appendLog('audio.playback.started');
     }
     source.onended = () => {
       activePlaybackSourcesRef.current = Math.max(0, activePlaybackSourcesRef.current - 1);
@@ -139,7 +180,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     if (microphoneStartedRef.current || socket.readyState !== WebSocket.OPEN) return;
     clearMicrophoneStartFallback();
     microphoneStartedRef.current = true;
-    appendEvent('microphone.ready');
+    appendLog('microphone.ready');
     startStreamingMicrophone(socket, stream, audioContext);
   };
 
@@ -176,7 +217,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     }
     setError(null);
     setAudioSrc(null);
-    setEvents([]);
+    setMessages([]);
     setRunId(null);
     activePlaybackSourcesRef.current = 0;
     serverAudioStoppedRef.current = false;
@@ -194,10 +235,10 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       socketRef.current = socket;
       socket.onopen = () => {
         setActive(true);
-        appendEvent(`session.open ${session.run_id}`);
+        appendLog(`session.open ${session.run_id}`);
         socket.send(JSON.stringify({ type: 'start', sample_rate: audioContext.sampleRate }));
         if (session.first_message?.trim()) {
-          appendEvent('waiting.initial_greeting');
+          appendLog('waiting.initial_greeting');
           microphoneStartFallbackRef.current = window.setTimeout(
             () => beginMicrophoneStreaming(socket, stream, audioContext),
             15000,
@@ -214,7 +255,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
           return;
         }
         const event = JSON.parse(message.data) as RuntimeMessage;
-        appendEvent(formatRuntimeEvent(event));
+        handleRuntimeEvent(event);
         if (event.type === 'runtime.error') {
           setError(event.message ?? 'Runtime error while running the test call.');
           beginMicrophoneStreaming(socket, stream, audioContext);
@@ -235,7 +276,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       socket.onerror = () => setError('WebSocket failed. Check the FastAPI terminal logs.');
       socket.onclose = () => {
         setActive(false);
-        appendEvent('session.closed');
+        appendLog('session.closed');
         onSessionUpdated();
         void cleanupAudioInput();
         void cleanupPlayback();
@@ -256,14 +297,14 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setMode('text');
     setError(null);
     setAudioSrc(null);
-    setEvents([]);
+    setMessages([]);
     try {
       const session = await createTestSession(agentId);
       setRunId(session.run_id);
       setActive(true);
-      appendEvent(`chat.open ${session.run_id}`);
+      appendLog(`chat.open ${session.run_id}`);
       if (session.first_message) {
-        appendEvent(`agent: ${session.first_message}`);
+        appendMessage('assistant', session.first_message);
       }
       onSessionUpdated();
     } catch (err) {
@@ -277,10 +318,10 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setSending(true);
     setError(null);
     setTextMessage('');
-    appendEvent(`you: ${message}`);
+    appendMessage('user', message);
     try {
       const turn = await createTextTurn(runId, message);
-      appendEvent(`agent: ${turn.assistant_text}`);
+      appendMessage('assistant', turn.assistant_text);
       onSessionUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to send message.');
@@ -324,7 +365,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
           <button className={`rounded-md px-2 py-1.5 ${mode === 'text' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('text')}>Text</button>
         </div>
         {mode === 'voice' ? <AudioMeter active={active} /> : null}
-        <TranscriptStream events={events} />
+        <TranscriptStream messages={messages} />
         {mode === 'text' ? (
           <div className="flex gap-2">
             <input
