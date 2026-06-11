@@ -30,6 +30,7 @@ export interface TestSession {
   run_id: string;
   adk_session_id: string;
   websocket_url: string;
+  first_message?: string;
 }
 
 export interface TraceEvent {

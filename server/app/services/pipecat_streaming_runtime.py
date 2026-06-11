@@ -89,6 +89,8 @@ class StreamingTraceBridge(FrameProcessor):
             await self.push_frame(
                 OutputTransportMessageFrame({"type": "agent.thinking"}), direction
             )
+            self._assistant_text_parts = []
+            self._audio_started = False
         elif isinstance(frame, VqlLLMTextFrame):
             self._assistant_text_parts.append(frame.text)
             await self.push_frame(
@@ -215,6 +217,10 @@ class PipecatStreamingRuntime:
             },
         )
         logger.info("pipecat streaming test-call started run_id=%s", run_id)
+
+        if config.first_message:
+            await task.queue_frame(VqlLLMTextFrame(text=config.first_message))
+
         await runner.run(task)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
 

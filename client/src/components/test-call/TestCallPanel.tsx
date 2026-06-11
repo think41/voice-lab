@@ -193,6 +193,9 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       setRunId(session.run_id);
       setActive(true);
       appendEvent(`chat.open ${session.run_id}`);
+      if (session.first_message) {
+        appendEvent(`agent: ${session.first_message}`);
+      }
       onSessionUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to start chat session.');

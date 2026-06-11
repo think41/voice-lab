@@ -38,6 +38,7 @@ class TestSessionRead(BaseModel):
     run_id: str
     adk_session_id: str
     websocket_url: str
+    first_message: str | None = None
 
 
 @router.post("/session", response_model=TestSessionRead, status_code=201)
@@ -54,10 +55,12 @@ async def create_test_session(payload: TestSessionCreate, session: SessionDep) -
         agent.id,
         agent.name,
     )
+    config = AgentConfig.model_validate(agent.config)
     return TestSessionRead(
         run_id=run.id,
         adk_session_id=adk_session_id,
         websocket_url=f"/api/test-call/ws/{run.id}",
+        first_message=config.first_message,
     )
 
 
