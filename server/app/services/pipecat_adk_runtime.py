@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from base64 import b64encode
 from collections.abc import AsyncIterator
 from uuid import uuid4
@@ -16,6 +17,19 @@ from app.services.adk_session_service import create_adk_session_service
 from app.services.voice_runtime import RuntimeEvent, VoiceRuntime
 
 logger = logging.getLogger("uvicorn.error")
+
+SUPPORTED_DEEPGRAM_VOICES = {
+    "aura-asteria-en",
+    "aura-luna-en",
+    "aura-stella-en",
+    "aura-athena-en",
+    "aura-2-thalia-en",
+    "aura-2-orion-en",
+    "aura-2-vesta-en",
+    "aura-2-zeus-en",
+}
+
+LEGACY_DEEPGRAM_VOICES = {"Rachel": "aura-asteria-en"}
 
 
 class PipecatAdkRuntime(VoiceRuntime):
@@ -50,10 +64,12 @@ class PipecatAdkRuntime(VoiceRuntime):
             raise RuntimeError("STT_API_KEY or TTS_API_KEY is required to speak agent responses")
 
         voice_model = self._deepgram_voice_model(config.tts_voice)
+        speech_text = self._normalize_for_speech(text)
         logger.info(
-            "deepgram tts request voice_model=%s text_chars=%d",
+            "deepgram tts request voice_model=%s text_chars=%d speech_chars=%d",
             voice_model,
             len(text),
+            len(speech_text),
         )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
@@ -64,7 +80,7 @@ class PipecatAdkRuntime(VoiceRuntime):
                     "Content-Type": "application/json",
                     "Authorization": f"Token {api_key}",
                 },
-                json={"text": text},
+                json={"text": speech_text},
             )
             try:
                 response.raise_for_status()
@@ -196,11 +212,16 @@ class PipecatAdkRuntime(VoiceRuntime):
             return f"agent_{normalized}"
         return normalized
 
+    def _normalize_for_speech(self, text: str) -> str:
+        return re.sub(r"\bthink\s*41\b", "Think forty one", text, flags=re.IGNORECASE)
+
     def _deepgram_tts_api_key(self) -> str | None:
         settings = get_settings()
         return settings.stt_api_key or settings.tts_api_key
 
     def _deepgram_voice_model(self, voice: str) -> str:
-        if voice in {"aura-asteria-en", "Rachel"}:
-            return "aura-asteria-en"
+        if voice in LEGACY_DEEPGRAM_VOICES:
+            return LEGACY_DEEPGRAM_VOICES[voice]
+        if voice in SUPPORTED_DEEPGRAM_VOICES:
+            return voice
         raise RuntimeError(f"Unsupported Deepgram voice: {voice}")

@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from websockets.asyncio.client import ClientConnection
+from websockets.exceptions import ConnectionClosedError
 
 from app.core.config import get_settings
 from app.core.db import get_db_session
@@ -18,10 +19,14 @@ from app.repositories.agent_repository import AgentRepository
 from app.repositories.run_repository import RunRepository
 from app.schemas.agent import AgentConfig
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
+from app.services.pipecat_streaming_runtime import PipecatStreamingRuntime
 
 router = APIRouter(prefix="/test-call", tags=["test-call"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 logger = logging.getLogger("uvicorn.error")
+AGENT_RESPONSE_TIMEOUT_SECONDS = 20.0
+DEEPGRAM_KEEPALIVE_INTERVAL_SECONDS = 3.0
+DEEPGRAM_KEEPALIVE_FRAME_MS = 100
 
 
 class TestSessionCreate(BaseModel):
@@ -114,6 +119,59 @@ async def create_text_turn(
     return TextTurnRead(run_id=run_id, user_text=message, assistant_text=assistant_text)
 
 
+@router.websocket("/stream/ws/{run_id}")
+async def test_call_stream_socket(websocket: WebSocket, run_id: str, session: SessionDep) -> None:
+    await websocket.accept()
+    logger.info("streaming test-call websocket accepted run_id=%s", run_id)
+
+    run_repository = RunRepository(session)
+    trace_sequence = await run_repository.max_trace_sequence(run_id)
+    trace_lock = asyncio.Lock()
+
+    async def record_trace(event_type: str, payload: dict[str, Any]) -> None:
+        nonlocal trace_sequence
+        async with trace_lock:
+            trace_sequence += 1
+            try:
+                await RunRepository(session).append_trace(
+                    run_id=run_id,
+                    sequence=trace_sequence,
+                    event_type=event_type,
+                    payload=payload,
+                )
+            except Exception:
+                await session.rollback()
+                raise
+
+    try:
+        run = await run_repository.get(run_id)
+        if run is None:
+            raise RuntimeError("Test run not found")
+        config = AgentConfig.model_validate(run.agent.config)
+        await websocket.send_json({"type": "session.ready", "run_id": run_id})
+        await websocket.send_json({"type": "runtime.ready", "sample_rate": 48000})
+        runtime = PipecatStreamingRuntime()
+        await runtime.run_websocket(
+            websocket=websocket,
+            config=config,
+            run_id=run_id,
+            session_id=run.adk_session_id,
+            record_trace=record_trace,
+            sample_rate=48000,
+        )
+    except WebSocketDisconnect:
+        logger.info("streaming test-call websocket disconnected run_id=%s", run_id)
+    except Exception as exc:
+        logger.exception("streaming test-call websocket failed run_id=%s", run_id)
+        await record_trace("runtime.error", {"message": str(exc), "source": "pipecat_stream"})
+        try:
+            await websocket.send_json({"type": "runtime.error", "message": str(exc)})
+        except Exception:
+            pass
+    finally:
+        logger.info("streaming test-call websocket closed run_id=%s", run_id)
+
+
 @router.websocket("/ws/{run_id}")
 async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDep) -> None:
     await websocket.accept()
@@ -121,13 +179,16 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
 
     runtime = PipecatAdkRuntime()
     send_lock = asyncio.Lock()
+    trace_lock = asyncio.Lock()
     deepgram_ws: ClientConnection | None = None
     deepgram_task: asyncio.Task[None] | None = None
+    deepgram_keepalive_task: asyncio.Task[None] | None = None
     config: AgentConfig | None = None
     adk_session_id: str | None = None
     user_id = "local-user"
     last_final_transcript = ""
     last_final_transcript_at = 0.0
+    agent_turn_active = False
     trace_sequence = 0
 
     async def send_json(payload: dict[str, Any]) -> None:
@@ -136,18 +197,26 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
 
     async def record_trace(event_type: str, payload: dict[str, Any]) -> None:
         nonlocal trace_sequence
-        trace_sequence += 1
-        await RunRepository(session).append_trace(
-            run_id=run_id,
-            sequence=trace_sequence,
-            event_type=event_type,
-            payload=payload,
-        )
+        async with trace_lock:
+            trace_sequence += 1
+            try:
+                await RunRepository(session).append_trace(
+                    run_id=run_id,
+                    sequence=trace_sequence,
+                    event_type=event_type,
+                    payload=payload,
+                )
+            except Exception:
+                await session.rollback()
+                raise
 
     async def handle_final_transcript(transcript: str) -> None:
-        nonlocal last_final_transcript, last_final_transcript_at
+        nonlocal last_final_transcript, last_final_transcript_at, agent_turn_active
         if config is None or adk_session_id is None:
             logger.warning("test-call transcript ignored before runtime start run_id=%s", run_id)
+            return
+        if agent_turn_active:
+            logger.info("test-call transcript ignored during active agent turn run_id=%s", run_id)
             return
         transcript = transcript.strip()
         now = time.monotonic()
@@ -166,27 +235,70 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
         )
         await record_trace("transcript.final", {"role": "user", "text": transcript})
         await send_json({"type": "transcript.final", "text": transcript})
-        response_text = await runtime.generate_agent_response(
-            config=config,
-            session_id=adk_session_id,
-            user_text=transcript,
-            user_id=user_id,
-        )
-        await record_trace("agent.text", {"role": "assistant", "text": response_text})
-        await send_json({"type": "agent.text", "text": response_text})
-        audio_event = await runtime.synthesize_text(config, response_text)
-        await record_trace(
-            "audio.output",
-            {
-                "role": "assistant",
-                "text": response_text,
-                "mime_type": audio_event.payload.get("mime_type"),
-            },
-        )
-        await send_json({"type": audio_event.type, **audio_event.payload})
-        logger.info(
-            "test-call response audio sent run_id=%s response_chars=%d", run_id, len(response_text)
-        )
+        await send_json({"type": "agent.thinking"})
+        agent_turn_active = True
+        try:
+            response_text = await asyncio.wait_for(
+                runtime.generate_agent_response(
+                    config=config,
+                    session_id=adk_session_id,
+                    user_text=transcript,
+                    user_id=user_id,
+                ),
+                timeout=AGENT_RESPONSE_TIMEOUT_SECONDS,
+            )
+            await record_trace("agent.text", {"role": "assistant", "text": response_text})
+            await send_json({"type": "agent.text", "text": response_text})
+            audio_event = await runtime.synthesize_text(config, response_text)
+            await record_trace(
+                "audio.output",
+                {
+                    "role": "assistant",
+                    "text": response_text,
+                    "mime_type": audio_event.payload.get("mime_type"),
+                },
+            )
+            await send_json({"type": audio_event.type, **audio_event.payload})
+            logger.info(
+                "test-call response audio sent run_id=%s response_chars=%d",
+                run_id,
+                len(response_text),
+            )
+        except TimeoutError:
+            message = "Agent response timed out. Please try again."
+            logger.warning(
+                "test-call agent response timed out run_id=%s timeout_seconds=%.1f",
+                run_id,
+                AGENT_RESPONSE_TIMEOUT_SECONDS,
+            )
+            await record_trace(
+                "runtime.error",
+                {
+                    "message": message,
+                    "source": "agent_response",
+                    "timeout_seconds": AGENT_RESPONSE_TIMEOUT_SECONDS,
+                },
+            )
+            await send_json({"type": "runtime.error", "message": message})
+        except Exception as exc:
+            message = str(exc) or "Agent response failed. Please try again."
+            logger.exception("test-call agent turn failed run_id=%s", run_id)
+            await record_trace("runtime.error", {"message": message, "source": "agent_response"})
+            await send_json({"type": "runtime.error", "message": message})
+        finally:
+            agent_turn_active = False
+
+    async def keep_deepgram_alive(connection: ClientConnection, sample_rate: int) -> None:
+        samples = max(1, int(sample_rate * DEEPGRAM_KEEPALIVE_FRAME_MS / 1000))
+        silent_frame = b"\x00\x00" * samples
+        try:
+            while True:
+                await asyncio.sleep(DEEPGRAM_KEEPALIVE_INTERVAL_SECONDS)
+                await connection.send(silent_frame)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.info("deepgram keepalive stopped run_id=%s reason=%s", run_id, exc)
 
     async def listen_to_deepgram(connection: ClientConnection) -> None:
         final_segments: list[str] = []
@@ -201,12 +313,33 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
             if utterance:
                 await handle_final_transcript(utterance)
 
+        async def cancel_finalize_task() -> None:
+            nonlocal finalize_task
+            if finalize_task is None or finalize_task.done():
+                return
+            finalize_task.cancel()
+            try:
+                await finalize_task
+            except asyncio.CancelledError:
+                pass
+            finalize_task = None
+
         def schedule_partial_flush() -> None:
             nonlocal finalize_task
 
             async def delayed_flush() -> None:
-                await asyncio.sleep(1.1)
-                await flush_transcript()
+                try:
+                    await asyncio.sleep(1.1)
+                    await flush_transcript()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.exception("test-call delayed transcript flush failed run_id=%s", run_id)
+                    await record_trace(
+                        "runtime.error",
+                        {"message": str(exc), "source": "delayed_transcript_flush"},
+                    )
+                    await send_json({"type": "runtime.error", "message": str(exc)})
 
             if finalize_task is not None and not finalize_task.done():
                 finalize_task.cancel()
@@ -217,8 +350,7 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                 data = json.loads(raw)
                 event_type = data.get("type")
                 if event_type == "UtteranceEnd":
-                    if finalize_task is not None and not finalize_task.done():
-                        finalize_task.cancel()
+                    await cancel_finalize_task()
                     await flush_transcript()
                     continue
                 if event_type and event_type != "Results":
@@ -230,6 +362,10 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                 transcript = transcript.strip()
                 if not transcript:
                     continue
+                if agent_turn_active:
+                    final_segments.clear()
+                    latest_partial = ""
+                    continue
                 if data.get("is_final"):
                     final_segments.append(transcript)
                     latest_partial = ""
@@ -239,18 +375,23 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                     await send_json({"type": "transcript.partial", "text": transcript})
                     schedule_partial_flush()
                 if data.get("speech_final"):
-                    if finalize_task is not None and not finalize_task.done():
-                        finalize_task.cancel()
+                    await cancel_finalize_task()
                     await flush_transcript()
         except asyncio.CancelledError:
             raise
+        except ConnectionClosedError as exc:
+            if "NET-0001" in str(exc):
+                logger.info("deepgram stream closed after idle timeout run_id=%s", run_id)
+                return
+            logger.exception("deepgram listener failed run_id=%s", run_id)
+            await record_trace("runtime.error", {"message": str(exc), "source": "deepgram"})
+            await send_json({"type": "runtime.error", "message": str(exc)})
         except Exception as exc:
             logger.exception("deepgram listener failed run_id=%s", run_id)
             await record_trace("runtime.error", {"message": str(exc), "source": "deepgram"})
             await send_json({"type": "runtime.error", "message": str(exc)})
         finally:
-            if finalize_task is not None and not finalize_task.done():
-                finalize_task.cancel()
+            await cancel_finalize_task()
 
     try:
         await send_json({"type": "session.ready", "run_id": run_id})
@@ -285,6 +426,9 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
                 sample_rate = int(payload.get("sample_rate") or 48000)
                 deepgram_ws = await _open_deepgram_stream(config, sample_rate)
                 deepgram_task = asyncio.create_task(listen_to_deepgram(deepgram_ws))
+                deepgram_keepalive_task = asyncio.create_task(
+                    keep_deepgram_alive(deepgram_ws, sample_rate)
+                )
                 await record_trace(
                     "session.started",
                     {
@@ -341,6 +485,12 @@ async def test_call_socket(websocket: WebSocket, run_id: str, session: SessionDe
         await send_json({"type": "runtime.error", "message": str(exc)})
         await websocket.close()
     finally:
+        if deepgram_keepalive_task is not None:
+            deepgram_keepalive_task.cancel()
+            try:
+                await deepgram_keepalive_task
+            except asyncio.CancelledError:
+                pass
         if deepgram_ws is not None:
             await deepgram_ws.close()
         if deepgram_task is not None:

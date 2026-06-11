@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Plus, Trash2, X } from 'lucide-react';
 
+import { modelOptions, sttModelOptions, sttProviderOptions, ttsProviderOptions, voiceOptions } from '../../data/providerOptions';
 import type { AgentConfig } from '../../lib/types';
 import { Button } from '../ui/Button';
 
@@ -11,12 +12,6 @@ interface AgentInspectorProps {
   onSave: () => void;
   onClose: () => void;
 }
-
-const modelOptions = [{ value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' }];
-const sttProviderOptions = [{ value: 'deepgram', label: 'Deepgram' }];
-const sttModelOptions = [{ value: 'nova-2', label: 'Nova-2' }];
-const ttsProviderOptions = [{ value: 'deepgram', label: 'Deepgram' }];
-const voiceOptions = [{ value: 'aura-asteria-en', label: 'Aura Asteria' }];
 
 export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspectorProps) {
   const update = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) => onChange({ ...config, [key]: value });

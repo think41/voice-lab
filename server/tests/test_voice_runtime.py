@@ -1,3 +1,5 @@
+import pytest
+
 from app.schemas.agent import AgentConfig
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 
@@ -24,4 +26,23 @@ def test_build_adk_app_uses_ui_config() -> None:
 def test_deepgram_voice_mapping_supports_current_and_legacy_saved_configs() -> None:
     runtime = PipecatAdkRuntime()
     assert runtime._deepgram_voice_model("aura-asteria-en") == "aura-asteria-en"
+    assert runtime._deepgram_voice_model("aura-luna-en") == "aura-luna-en"
+    assert runtime._deepgram_voice_model("aura-2-orion-en") == "aura-2-orion-en"
     assert runtime._deepgram_voice_model("Rachel") == "aura-asteria-en"
+
+
+def test_deepgram_voice_mapping_rejects_unsupported_voice() -> None:
+    runtime = PipecatAdkRuntime()
+    with pytest.raises(RuntimeError, match="Unsupported Deepgram voice"):
+        runtime._deepgram_voice_model("unknown-voice")
+
+
+def test_speech_normalization_pronounces_think41_brand() -> None:
+    runtime = PipecatAdkRuntime()
+    assert runtime._normalize_for_speech("think41") == "Think forty one"
+    assert runtime._normalize_for_speech("Think41") == "Think forty one"
+    assert runtime._normalize_for_speech("Think 41") == "Think forty one"
+    assert (
+        runtime._normalize_for_speech("Welcome to think41. This is think 41 support.")
+        == "Welcome to Think forty one. This is Think forty one support."
+    )

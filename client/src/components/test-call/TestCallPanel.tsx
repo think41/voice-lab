@@ -30,6 +30,8 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const playbackContextRef = useRef<AudioContext | null>(null);
+  const nextPlaybackTimeRef = useRef(0);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
@@ -46,6 +48,35 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
 
   const appendEvent = (event: string) => {
     setEvents((current) => [...current.slice(-80), event]);
+  };
+
+  const cleanupPlayback = async () => {
+    if (playbackContextRef.current && playbackContextRef.current.state !== 'closed') {
+      await playbackContextRef.current.close();
+    }
+    playbackContextRef.current = null;
+    nextPlaybackTimeRef.current = 0;
+  };
+
+  const playPcmChunk = async (chunk: ArrayBuffer) => {
+    if (chunk.byteLength === 0) return;
+    const context = playbackContextRef.current ?? new AudioContext({ sampleRate: 24000 });
+    playbackContextRef.current = context;
+    if (context.state === 'suspended') await context.resume();
+
+    const samples = new Int16Array(chunk);
+    const buffer = context.createBuffer(1, samples.length, 24000);
+    const channel = buffer.getChannelData(0);
+    for (let index = 0; index < samples.length; index += 1) {
+      channel[index] = samples[index] / 32768;
+    }
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    const startAt = Math.max(context.currentTime + 0.02, nextPlaybackTimeRef.current);
+    source.start(startAt);
+    nextPlaybackTimeRef.current = startAt + buffer.duration;
   };
 
   const cleanupAudioInput = async () => {
@@ -101,7 +132,8 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
 
       const session = await createTestSession(agentId);
       setRunId(session.run_id);
-      const socket = new WebSocket(websocketUrl(session.websocket_url));
+      const socket = new WebSocket(websocketUrl(session.websocket_url.replace('/ws/', '/stream/ws/')));
+      socket.binaryType = 'arraybuffer';
       socketRef.current = socket;
       socket.onopen = () => {
         setActive(true);
@@ -110,6 +142,12 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         startStreamingMicrophone(socket, stream, audioContext);
       };
       socket.onmessage = (message) => {
+        if (message.data instanceof ArrayBuffer) {
+          void playPcmChunk(message.data).catch(() => {
+            setError('Audio arrived, but browser playback failed.');
+          });
+          return;
+        }
         const event = JSON.parse(message.data) as RuntimeMessage;
         appendEvent(formatRuntimeEvent(event));
         if (event.type === 'runtime.error') {
@@ -131,9 +169,11 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         appendEvent('session.closed');
         onSessionUpdated();
         void cleanupAudioInput();
+        void cleanupPlayback();
       };
     } catch (err) {
       await cleanupAudioInput();
+      await cleanupPlayback();
       setError(err instanceof Error ? err.message : 'Unable to start test call.');
     }
   };
@@ -189,6 +229,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setActive(false);
     onSessionUpdated();
     void cleanupAudioInput();
+    void cleanupPlayback();
   };
 
   const closePanel = () => {
@@ -263,6 +304,15 @@ function formatRuntimeEvent(event: RuntimeMessage) {
   }
   if (event.type === 'agent.text' && event.text) {
     return `agent: ${event.text}`;
+  }
+  if (event.type === 'agent.text.delta' && event.text) {
+    return `agent.delta: ${event.text}`;
+  }
+  if (event.type === 'agent.thinking') {
+    return 'agent.thinking';
+  }
+  if (event.type === 'audio.output.started') {
+    return 'audio.output.started';
   }
   if (event.type === 'runtime.ready') {
     return `runtime.ready ${event.sample_rate ? `${event.sample_rate}hz` : ''}`.trim();

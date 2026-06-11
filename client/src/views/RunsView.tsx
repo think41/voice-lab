@@ -1,13 +1,28 @@
+import { useEffect, useState } from 'react';
+
 import { MetricCard } from '../components/ui/MetricCard';
 import { SessionsPane } from '../components/runs/SessionsPane';
 import { TraceTable } from '../components/runs/TraceTable';
 import type { RunRecord } from '../lib/types';
 
 export function RunsView({ runs }: { runs: RunRecord[] }) {
-  const selectedRun = runs[0] ?? null;
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (runs.length === 0) {
+      setSelectedRunId(null);
+      return;
+    }
+    if (!selectedRunId || !runs.some((run) => run.id === selectedRunId)) {
+      setSelectedRunId(runs[0].id);
+    }
+  }, [runs, selectedRunId]);
+
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? runs[0] ?? null;
+
   return (
     <div className="flex flex-1 overflow-hidden">
-      <SessionsPane runs={runs} />
+      <SessionsPane runs={runs} selectedRunId={selectedRun?.id ?? null} onSelectRun={setSelectedRunId} />
       <section className="flex min-w-0 flex-1 flex-col bg-white">
         <div className="grid grid-cols-4 border-b border-line">
           <MetricCard label="Session cost" value="$0.00" sub={selectedRun?.id.slice(0, 8) ?? 'no session'} />
