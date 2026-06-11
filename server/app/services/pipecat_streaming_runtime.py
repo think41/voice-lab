@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from fastapi import WebSocket
 from pipecat.frames.frames import (
+    BotStartedSpeakingFrame,
+    BotStoppedSpeakingFrame,
     CancelFrame,
     EndFrame,
     Frame,
@@ -15,7 +17,6 @@ from pipecat.frames.frames import (
     OutputTransportMessageFrame,
     TranscriptionFrame,
     TTSStartedFrame,
-    TTSStoppedFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -35,6 +36,7 @@ from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 
 logger = logging.getLogger("uvicorn.error")
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
+EventSender = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 class RawPcmWebsocketSerializer(FrameSerializer):
@@ -72,7 +74,6 @@ class StreamingTraceBridge(FrameProcessor):
         super().__init__()
         self._record_trace = record_trace
         self._assistant_text_parts: list[str] = []
-        self._audio_started = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
@@ -92,33 +93,41 @@ class StreamingTraceBridge(FrameProcessor):
                 OutputTransportMessageFrame({"type": "agent.thinking"}), direction
             )
             self._assistant_text_parts = []
-            self._audio_started = False
         elif isinstance(frame, VqlLLMTextFrame):
             self._assistant_text_parts.append(frame.text)
             await self.push_frame(
                 OutputTransportMessageFrame({"type": "agent.text.delta", "text": frame.text}),
                 direction,
             )
-        elif isinstance(frame, TTSStartedFrame) and not self._audio_started:
-            self._audio_started = True
+        elif isinstance(frame, TTSStartedFrame):
             text = "".join(self._assistant_text_parts).strip()
             if text:
                 await self._record_trace("agent.text", {"role": "assistant", "text": text})
+
+        await self.push_frame(frame, direction)
+
+
+class PlaybackTraceBridge(FrameProcessor):
+    def __init__(self, record_trace: TraceRecorder, send_event: EventSender) -> None:
+        super().__init__()
+        self._record_trace = record_trace
+        self._send_event = send_event
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, BotStartedSpeakingFrame):
             await self._record_trace("audio.output.started", {"role": "assistant"})
-            await self.push_frame(
-                OutputTransportMessageFrame({"type": "audio.output.started"}), direction
-            )
-        elif isinstance(frame, TTSStoppedFrame) and self._audio_started:
-            self._audio_started = False
+            await self._send_event({"type": "audio.output.started"})
+        elif isinstance(frame, BotStoppedSpeakingFrame):
             await self._record_trace("audio.output.stopped", {"role": "assistant"})
-            await self.push_frame(
-                OutputTransportMessageFrame({"type": "audio.output.stopped"}), direction
-            )
+            await self._send_event({"type": "audio.output.stopped"})
 
         await self.push_frame(frame, direction)
 
 
 class PipecatStreamingRuntime:
+
     async def run_websocket(
         self,
         *,
@@ -182,7 +191,11 @@ class PipecatStreamingRuntime:
             sample_rate=24000,
             encoding="linear16",
         )
+        async def send_event(payload: dict[str, Any]) -> None:
+            await websocket.send_json(payload)
+
         trace_bridge = StreamingTraceBridge(record_trace)
+        playback_bridge = PlaybackTraceBridge(record_trace, send_event)
         pipeline = Pipeline(
             [
                 transport.input(),
@@ -192,6 +205,7 @@ class PipecatStreamingRuntime:
                 trace_bridge,
                 tts,
                 transport.output(),
+                playback_bridge,
                 context.assistant(),
             ]
         )
