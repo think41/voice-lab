@@ -15,6 +15,7 @@ from pipecat.frames.frames import (
     OutputTransportMessageFrame,
     TranscriptionFrame,
     TTSStartedFrame,
+    TTSStoppedFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -106,6 +107,12 @@ class StreamingTraceBridge(FrameProcessor):
             await self._record_trace("audio.output.started", {"role": "assistant"})
             await self.push_frame(
                 OutputTransportMessageFrame({"type": "audio.output.started"}), direction
+            )
+        elif isinstance(frame, TTSStoppedFrame) and self._audio_started:
+            self._audio_started = False
+            await self._record_trace("audio.output.stopped", {"role": "assistant"})
+            await self.push_frame(
+                OutputTransportMessageFrame({"type": "audio.output.stopped"}), direction
             )
 
         await self.push_frame(frame, direction)

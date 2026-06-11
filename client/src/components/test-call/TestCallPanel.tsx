@@ -35,6 +35,8 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  const microphoneStartedRef = useRef(false);
+  const microphoneStartFallbackRef = useRef<number | null>(null);
   const [mode, setMode] = useState<TestMode>('voice');
   const [runId, setRunId] = useState<string | null>(null);
   const [events, setEvents] = useState<string[]>([]);
@@ -48,6 +50,13 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
 
   const appendEvent = (event: string) => {
     setEvents((current) => [...current.slice(-80), event]);
+  };
+
+  const clearMicrophoneStartFallback = () => {
+    if (microphoneStartFallbackRef.current !== null) {
+      window.clearTimeout(microphoneStartFallbackRef.current);
+      microphoneStartFallbackRef.current = null;
+    }
   };
 
   const cleanupPlayback = async () => {
@@ -80,6 +89,8 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   };
 
   const cleanupAudioInput = async () => {
+    clearMicrophoneStartFallback();
+    microphoneStartedRef.current = false;
     processorRef.current?.disconnect();
     sourceRef.current?.disconnect();
     gainRef.current?.disconnect();
@@ -92,6 +103,24 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       await audioContextRef.current.close();
     }
     audioContextRef.current = null;
+  };
+
+  const beginMicrophoneStreaming = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
+    if (microphoneStartedRef.current || socket.readyState !== WebSocket.OPEN) return;
+    clearMicrophoneStartFallback();
+    microphoneStartedRef.current = true;
+    appendEvent('microphone.ready');
+    startStreamingMicrophone(socket, stream, audioContext);
+  };
+
+  const beginMicrophoneAfterPlayback = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
+    const playbackContext = playbackContextRef.current;
+    const queuedSeconds = playbackContext ? Math.max(0, nextPlaybackTimeRef.current - playbackContext.currentTime) : 0;
+    clearMicrophoneStartFallback();
+    microphoneStartFallbackRef.current = window.setTimeout(
+      () => beginMicrophoneStreaming(socket, stream, audioContext),
+      queuedSeconds * 1000 + 250,
+    );
   };
 
   const startStreamingMicrophone = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
@@ -139,7 +168,15 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         setActive(true);
         appendEvent(`session.open ${session.run_id}`);
         socket.send(JSON.stringify({ type: 'start', sample_rate: audioContext.sampleRate }));
-        startStreamingMicrophone(socket, stream, audioContext);
+        if (session.first_message?.trim()) {
+          appendEvent('waiting.initial_greeting');
+          microphoneStartFallbackRef.current = window.setTimeout(
+            () => beginMicrophoneStreaming(socket, stream, audioContext),
+            10000,
+          );
+        } else {
+          beginMicrophoneStreaming(socket, stream, audioContext);
+        }
       };
       socket.onmessage = (message) => {
         if (message.data instanceof ArrayBuffer) {
@@ -152,6 +189,10 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         appendEvent(formatRuntimeEvent(event));
         if (event.type === 'runtime.error') {
           setError(event.message ?? 'Runtime error while running the test call.');
+          beginMicrophoneStreaming(socket, stream, audioContext);
+        }
+        if (event.type === 'audio.output.stopped') {
+          beginMicrophoneAfterPlayback(socket, stream, audioContext);
         }
         if (event.type === 'audio.output' && event.audio_base64) {
           audioRef.current?.pause();
@@ -316,6 +357,9 @@ function formatRuntimeEvent(event: RuntimeMessage) {
   }
   if (event.type === 'audio.output.started') {
     return 'audio.output.started';
+  }
+  if (event.type === 'audio.output.stopped') {
+    return 'audio.output.stopped';
   }
   if (event.type === 'runtime.ready') {
     return `runtime.ready ${event.sample_rate ? `${event.sample_rate}hz` : ''}`.trim();
