@@ -228,10 +228,3 @@ curl http://localhost:8000/health
 
 If FastAPI is using another port, set `VITE_API_TARGET` when starting the client and include the frontend origin in `CORS_ORIGINS`.
 
-## Current Status
-
-- The reference HTML design has been converted into React components.
-- Agent configuration, persistence APIs, Postgres models, migrations, and ADK session-service wiring are implemented.
-- `pipecat-adk` is installed directly from its GitHub repository.
-- The test-call WebSocket creates sessions, streams microphone audio to Deepgram STT, sends final transcripts through ADK, and returns Deepgram TTS audio to the browser.
-- Deployment execution remains follow-up work.
