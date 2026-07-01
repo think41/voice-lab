@@ -52,6 +52,10 @@ export default function App() {
     if (selectedAgent) setDraftConfig(normalizeVoiceConfig(selectedAgent.config));
   }, [selectedAgent]);
 
+  useEffect(() => {
+    setTestCallOpen(false);
+  }, [selectedAgentId]);
+
   const notify = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 2200);
@@ -115,7 +119,12 @@ export default function App() {
         {view === 'reports' ? <ReportsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'settings' ? <SettingsView /> : null}
       </Workspace>
-      <TestCallPanel agentId={selectedAgentId} open={testCallOpen} onClose={() => setTestCallOpen(false)} onSessionUpdated={() => void refreshRuns()} />
+      <TestCallPanel
+        agentId={selectedAgentId}
+        open={testCallOpen}
+        onClose={() => setTestCallOpen(false)}
+        onSessionUpdated={() => void refreshRuns()}
+      />
       <Modal open={deployOpen} title="Deploy VoiceLab agent" subtitle="Deployment execution is intentionally outside the first implementation pass." onClose={() => setDeployOpen(false)} />
       <Toast message={toast} />
     </div>
