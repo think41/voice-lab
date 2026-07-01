@@ -36,6 +36,10 @@ export default function App() {
   const [testCallOpen, setTestCallOpen] = useState(false);
 
   const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? null, [agents, selectedAgentId]);
+  const agentRuns = useMemo(
+    () => (selectedAgentId ? runs.filter((run) => run.agent_id === selectedAgentId) : []),
+    [runs, selectedAgentId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -96,12 +100,19 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <TopBar activeView={view} onViewChange={setView} onDeploy={() => setDeployOpen(true)} onTestCall={() => setTestCallOpen(true)} />
+      <TopBar onDeploy={() => setDeployOpen(true)} onTestCall={() => setTestCallOpen(true)} />
       <Workspace>
-        <Sidebar agents={agents} selectedAgentId={selectedAgentId} onSelectAgent={setSelectedAgentId} onNewAgent={newAgent} onViewChange={setView} />
+        <Sidebar
+          agents={agents}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={setSelectedAgentId}
+          onNewAgent={newAgent}
+          onViewChange={setView}
+          activeView={view}
+        />
         {view === 'builder' ? <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} /> : null}
-        {view === 'runs' ? <RunsView runs={runs} /> : null}
-        {view === 'reports' ? <ReportsView /> : null}
+        {view === 'runs' ? <RunsView runs={agentRuns} agent={selectedAgent} /> : null}
+        {view === 'reports' ? <ReportsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'settings' ? <SettingsView /> : null}
       </Workspace>
       <TestCallPanel agentId={selectedAgentId} open={testCallOpen} onClose={() => setTestCallOpen(false)} onSessionUpdated={() => void refreshRuns()} />

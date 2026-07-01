@@ -98,6 +98,7 @@ async def create_text_turn(
             session_id=run.adk_session_id,
             user_text=message,
             user_id=payload.user_id,
+            record_trace=record_trace,
         )
     except RuntimeError as exc:
         await record_trace("runtime.error", {"message": str(exc), "source": "text_chat"})

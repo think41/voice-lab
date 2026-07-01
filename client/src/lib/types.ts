@@ -41,6 +41,26 @@ export interface TraceEvent {
   created_at: string;
 }
 
+export interface UsageSummary {
+  llm: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cost_usd: number;
+    avg_latency_ms: number;
+  };
+  stt: {
+    audio_seconds: number;
+    cost_usd: number;
+  };
+  tts: {
+    characters: number;
+    cost_usd: number;
+    avg_latency_ms: number;
+  };
+  total_cost_usd: number;
+}
+
 export interface RunRecord {
   id: string;
   agent_id: string;
@@ -49,6 +69,7 @@ export interface RunRecord {
   summary: Record<string, unknown>;
   created_at: string;
   trace_events: TraceEvent[];
+  usage_summary: UsageSummary;
 }
 
 export interface TextTurn {
