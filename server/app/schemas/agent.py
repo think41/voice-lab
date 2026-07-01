@@ -1,6 +1,13 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+SUPPORTED_MODELS = {
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash-lite",
+}
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 
 class ToolConfig(BaseModel):
@@ -11,7 +18,7 @@ class ToolConfig(BaseModel):
 
 class AgentConfig(BaseModel):
     name: str = "Untitled Agent"
-    model: str = "gemini-2.5-flash"
+    model: str = DEFAULT_MODEL
     instruction: str = "You are a helpful voice assistant."
     stt_provider: str = "deepgram"
     stt_model: str = "nova-2"
@@ -21,6 +28,13 @@ class AgentConfig(BaseModel):
     first_message: str = "Hi, how can I help?"
     tools: list[ToolConfig] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def normalize_unsupported_model(cls, value: Any) -> str:
+        if not isinstance(value, str) or value not in SUPPORTED_MODELS:
+            return DEFAULT_MODEL
+        return value
 
 
 class AgentCreate(BaseModel):

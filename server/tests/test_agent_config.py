@@ -10,6 +10,11 @@ def test_agent_config_defaults() -> None:
     assert config.temperature == 0.4
 
 
+def test_agent_config_normalizes_unsupported_saved_model() -> None:
+    config = AgentConfig(name='Support Agent', model='llama-3.3-70b-versatile')
+    assert config.model == 'gemini-2.5-flash'
+
+
 def test_agent_config_temperature_bounds() -> None:
     try:
         AgentConfig(name='Bad Agent', temperature=3)

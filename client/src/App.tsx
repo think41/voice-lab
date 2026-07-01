@@ -15,10 +15,12 @@ import { RunsView } from './views/RunsView';
 import { SettingsView } from './views/SettingsView';
 
 type View = 'builder' | 'runs' | 'reports' | 'settings';
+const supportedModels = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']);
 
 function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
   return {
     ...config,
+    model: supportedModels.has(config.model) ? config.model : 'gemini-2.5-flash',
     stt_provider: 'deepgram',
     tts_provider: 'deepgram',
     tts_voice: config.tts_voice === 'Rachel' ? 'aura-asteria-en' : config.tts_voice,
