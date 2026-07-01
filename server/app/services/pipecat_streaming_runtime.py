@@ -34,8 +34,13 @@ from pipecat_adk.frames import (
 
 from app.core.config import get_settings
 from app.schemas.agent import AgentConfig
-from app.services.adk_session_service import create_adk_session_service
+from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
+from app.services.pipeline_metrics import (
+    AudioInputCounter,
+    MetricsSink,
+    SttUsageAccumulator,
+)
 
 logger = logging.getLogger("uvicorn.error")
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -165,9 +170,12 @@ class PipecatStreamingRuntime:
         if not tts_api_key:
             raise RuntimeError("STT_API_KEY or TTS_API_KEY is required for streaming Deepgram TTS")
 
-        await self._ensure_adk_session(session_id=session_id, user_id=user_id)
         helper = PipecatAdkRuntime()
         app = helper.build_adk_app(config)
+        session_service = create_adk_session_service()
+        await ensure_adk_session(
+            session_service, app_name=app.name, user_id=user_id, session_id=session_id
+        )
         voice = helper._deepgram_voice_model(config.tts_voice)
 
         transport = FastAPIWebsocketTransport(
@@ -181,12 +189,11 @@ class PipecatStreamingRuntime:
                 session_timeout=None,
             ),
         )
-        session_service = create_adk_session_service()
         llm = AdkLLMService(
             app=app,
             session_service=session_service,
             session_params=SessionParams(
-                app_name="voicelab", user_id=user_id, session_id=session_id
+                app_name=app.name, user_id=user_id, session_id=session_id
             ),
         )
         context = llm.create_context_aggregator()
@@ -218,9 +225,22 @@ class PipecatStreamingRuntime:
         user_trace_bridge = UserTranscriptBridge(record_trace, send_event)
         assistant_trace_bridge = AssistantTraceBridge(record_trace, send_event, helper)
         playback_bridge = PlaybackTraceBridge(record_trace, send_event)
+        stt_accumulator = SttUsageAccumulator()
+        audio_input_counter = AudioInputCounter(stt_accumulator)
+        metrics_sink = MetricsSink(
+            record_trace=record_trace,
+            stt_accumulator=stt_accumulator,
+            llm_model=config.model,
+            stt_provider=config.stt_provider,
+            stt_model=config.stt_model,
+            stt_sample_rate=sample_rate,
+            tts_provider=config.tts_provider,
+            tts_model=voice,
+        )
         pipeline = Pipeline(
             [
                 transport.input(),
+                audio_input_counter,
                 stt,
                 user_trace_bridge,
                 context.user(),
@@ -230,6 +250,7 @@ class PipecatStreamingRuntime:
                 transport.output(),
                 playback_bridge,
                 context.assistant(),
+                metrics_sink,
             ]
         )
         task = PipelineTask(
@@ -283,12 +304,3 @@ class PipecatStreamingRuntime:
         await runner.run(task)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
 
-    async def _ensure_adk_session(self, *, session_id: str, user_id: str) -> None:
-        session_service = create_adk_session_service()
-        existing = await session_service.get_session(
-            app_name="voicelab", user_id=user_id, session_id=session_id
-        )
-        if existing is None:
-            await session_service.create_session(
-                app_name="voicelab", user_id=user_id, session_id=session_id
-            )

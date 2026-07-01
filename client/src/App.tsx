@@ -7,7 +7,7 @@ import { Modal } from './components/ui/Modal';
 import { Toast } from './components/ui/Toast';
 import { TestCallPanel } from './components/test-call/TestCallPanel';
 import { defaultAgentConfig } from './data/defaults';
-import { createAgent, listAgents, listRuns, updateAgent } from './lib/api';
+import { createAgent, isAbortError, listAgents, listRuns, updateAgent } from './lib/api';
 import type { AgentConfig, AgentRecord, RunRecord } from './lib/types';
 import { BuilderView } from './views/BuilderView';
 import { ReportsView } from './views/ReportsView';
@@ -36,10 +36,16 @@ export default function App() {
   const [testCallOpen, setTestCallOpen] = useState(false);
 
   const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? null, [agents, selectedAgentId]);
+  const agentRuns = useMemo(
+    () => (selectedAgentId ? runs.filter((run) => run.agent_id === selectedAgentId) : []),
+    [runs, selectedAgentId],
+  );
 
   useEffect(() => {
-    void refreshAgents();
-    void refreshRuns();
+    const controller = new AbortController();
+    void refreshAgents(controller.signal);
+    void refreshRuns(controller.signal);
+    return () => controller.abort();
   }, []);
 
   useEffect(() => {
@@ -51,20 +57,22 @@ export default function App() {
     window.setTimeout(() => setToast(null), 2200);
   };
 
-  const refreshAgents = async () => {
+  const refreshAgents = async (signal?: AbortSignal) => {
     try {
-      const records = await listAgents();
+      const records = await listAgents(signal);
       setAgents(records);
       if (records[0] && !selectedAgentId) setSelectedAgentId(records[0].id);
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) return;
       setAgents([]);
     }
   };
 
-  const refreshRuns = async () => {
+  const refreshRuns = async (signal?: AbortSignal) => {
     try {
-      setRuns(await listRuns());
-    } catch {
+      setRuns(await listRuns(signal));
+    } catch (error) {
+      if (isAbortError(error)) return;
       setRuns([]);
     }
   };
@@ -92,12 +100,19 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <TopBar activeView={view} onViewChange={setView} onDeploy={() => setDeployOpen(true)} onTestCall={() => setTestCallOpen(true)} />
+      <TopBar onDeploy={() => setDeployOpen(true)} onTestCall={() => setTestCallOpen(true)} />
       <Workspace>
-        <Sidebar agents={agents} selectedAgentId={selectedAgentId} onSelectAgent={setSelectedAgentId} onNewAgent={newAgent} onViewChange={setView} />
+        <Sidebar
+          agents={agents}
+          selectedAgentId={selectedAgentId}
+          onSelectAgent={setSelectedAgentId}
+          onNewAgent={newAgent}
+          onViewChange={setView}
+          activeView={view}
+        />
         {view === 'builder' ? <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} /> : null}
-        {view === 'runs' ? <RunsView runs={runs} /> : null}
-        {view === 'reports' ? <ReportsView /> : null}
+        {view === 'runs' ? <RunsView runs={agentRuns} agent={selectedAgent} /> : null}
+        {view === 'reports' ? <ReportsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'settings' ? <SettingsView /> : null}
       </Workspace>
       <TestCallPanel agentId={selectedAgentId} open={testCallOpen} onClose={() => setTestCallOpen(false)} onSessionUpdated={() => void refreshRuns()} />

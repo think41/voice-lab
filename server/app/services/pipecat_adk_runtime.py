@@ -1,20 +1,22 @@
 import logging
 import os
 import re
-from base64 import b64encode
-from collections.abc import AsyncIterator
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
 from uuid import uuid4
 
-import httpx
 from google.adk.agents import Agent
 from google.adk.apps import App
+from google.adk.planners import BuiltInPlanner
 from google.adk.runners import Runner
 from google.genai import types
 
 from app.core.config import get_settings
 from app.schemas.agent import AgentConfig
-from app.services.adk_session_service import create_adk_session_service
-from app.services.voice_runtime import RuntimeEvent, VoiceRuntime
+from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
+
+TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -32,7 +34,7 @@ SUPPORTED_DEEPGRAM_VOICES = {
 LEGACY_DEEPGRAM_VOICES = {"Rachel": "aura-asteria-en"}
 
 
-class PipecatAdkRuntime(VoiceRuntime):
+class PipecatAdkRuntime:
     async def validate_environment(self) -> None:
         settings = get_settings()
         if not settings.gemini_api_key:
@@ -55,87 +57,26 @@ class PipecatAdkRuntime(VoiceRuntime):
             "set",
         )
 
-    async def synthesize_first_message(self, config: AgentConfig) -> RuntimeEvent:
-        return await self.synthesize_text(config, config.first_message)
-
-    async def synthesize_text(self, config: AgentConfig, text: str) -> RuntimeEvent:
-        api_key = self._deepgram_tts_api_key()
-        if not api_key:
-            raise RuntimeError("STT_API_KEY or TTS_API_KEY is required to speak agent responses")
-
-        voice_model = self._deepgram_voice_model(config.tts_voice)
-        speech_text = self._normalize_for_speech(text)
-        logger.info(
-            "deepgram tts request voice_model=%s text_chars=%d speech_chars=%d",
-            voice_model,
-            len(text),
-            len(speech_text),
-        )
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.deepgram.com/v1/speak",
-                params={"model": voice_model},
-                headers={
-                    "Accept": "audio/mpeg",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Token {api_key}",
-                },
-                json={"text": speech_text},
-            )
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                status_code = exc.response.status_code
-                logger.error("deepgram tts failed status=%d", status_code)
-                if status_code in {401, 403}:
-                    raise RuntimeError(
-                        "Deepgram rejected the TTS key. Check STT_API_KEY/TTS_API_KEY "
-                        "and restart the FastAPI server."
-                    ) from exc
-                detail = exc.response.text[:240]
-                raise RuntimeError(
-                    f"Deepgram TTS failed with HTTP {status_code}: {detail}"
-                ) from exc
-        logger.info("deepgram tts response bytes=%d", len(response.content))
-
-        return RuntimeEvent(
-            type="audio.output",
-            payload={
-                "text": text,
-                "mime_type": "audio/mpeg",
-                "audio_base64": b64encode(response.content).decode("ascii"),
-            },
-        )
-
     async def generate_agent_response(
         self,
         config: AgentConfig,
         session_id: str,
         user_text: str,
         user_id: str = "local-user",
+        record_trace: TraceRecorder | None = None,
     ) -> str:
         self.configure_google_api_key()
         app = self.build_adk_app(config)
         session_service = create_adk_session_service()
-        existing = await session_service.get_session(
-            app_name=app.name,
-            user_id=user_id,
-            session_id=session_id,
+        await ensure_adk_session(
+            session_service, app_name=app.name, user_id=user_id, session_id=session_id
         )
-        if existing is None:
-            await session_service.create_session(
-                app_name=app.name,
-                user_id=user_id,
-                session_id=session_id,
-            )
-            logger.info(
-                "adk session created app=%s user_id=%s session_id=%s", app.name, user_id, session_id
-            )
-
         runner = Runner(app=app, session_service=session_service)
         message = types.Content(role="user", parts=[types.Part(text=user_text)])
         response_parts: list[str] = []
+        final_usage: Any | None = None
         logger.info("adk turn start session_id=%s transcript_chars=%d", session_id, len(user_text))
+        turn_started = time.monotonic()
         try:
             async for event in runner.run_async(
                 user_id=user_id,
@@ -146,6 +87,10 @@ class PipecatAdkRuntime(VoiceRuntime):
                 event_text = self._event_text(event)
                 if event_text:
                     response_parts.append(event_text)
+                # Gemini repeats cumulative usage on every event; the last non-partial wins.
+                usage = getattr(event, "usage_metadata", None)
+                if usage and not getattr(event, "partial", False):
+                    final_usage = usage
                 if getattr(event, "error_message", None):
                     logger.error(
                         "adk event error session_id=%s error=%s", session_id, event.error_message
@@ -163,6 +108,21 @@ class PipecatAdkRuntime(VoiceRuntime):
         response_text = self.clean_model_text("".join(response_parts)).strip()
         if not response_text:
             response_text = "I heard you, but I could not produce a response."
+        if record_trace is not None and final_usage is not None:
+            latency_ms = round((time.monotonic() - turn_started) * 1000.0, 1)
+            await record_trace(
+                "usage.llm",
+                {
+                    "prompt_tokens": final_usage.prompt_token_count or 0,
+                    "completion_tokens": final_usage.candidates_token_count or 0,
+                    "total_tokens": final_usage.total_token_count or 0,
+                    "cache_read_input_tokens": final_usage.cached_content_token_count or 0,
+                    "reasoning_tokens": getattr(final_usage, "thoughts_token_count", None) or 0,
+                    "model": config.model,
+                    "processor": "adk-text",
+                    "latency_ms": latency_ms,
+                },
+            )
         logger.info(
             "adk turn complete session_id=%s response_chars=%d", session_id, len(response_text)
         )
@@ -176,6 +136,9 @@ class PipecatAdkRuntime(VoiceRuntime):
             name=self._normalize_agent_name(config.name),
             model=config.model,
             instruction=config.instruction,
+            planner=BuiltInPlanner(
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
         )
         return App(name="voicelab", root_agent=agent, plugins=[AdkInterruptionPlugin()])
 
@@ -184,21 +147,6 @@ class PipecatAdkRuntime(VoiceRuntime):
         if settings.gemini_api_key:
             os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
             os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
-
-    async def run_test_call(
-        self, config: AgentConfig, session_id: str
-    ) -> AsyncIterator[RuntimeEvent]:
-        await self.validate_environment()
-        app = self.build_adk_app(config)
-        session_service = create_adk_session_service()
-        yield RuntimeEvent(
-            type="adk.ready",
-            payload={
-                "app_name": app.name,
-                "session_id": session_id,
-                "session_service": str(session_service),
-            },
-        )
 
     def _event_text(self, event: object) -> str:
         content = getattr(event, "content", None)

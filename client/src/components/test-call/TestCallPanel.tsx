@@ -1,11 +1,12 @@
 import { MessageSquare, Mic, PhoneOff, Send } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { createTestSession, createTextTurn } from '../../lib/api';
 import { websocketUrl } from '../../lib/websocket';
 import { Button } from '../ui/Button';
 import { AudioMeter } from './AudioMeter';
 import { ChatMessage, TranscriptStream } from './TranscriptStream';
+import { useAudioIO } from './useAudioIO';
 
 interface TestCallPanelProps {
   agentId: string | null;
@@ -28,19 +29,6 @@ type RuntimeMessage = {
 export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: TestCallPanelProps) {
   const socketRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const playbackContextRef = useRef<AudioContext | null>(null);
-  const nextPlaybackTimeRef = useRef(0);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const gainRef = useRef<GainNode | null>(null);
-  const microphoneStartedRef = useRef(false);
-  const microphoneStartFallbackRef = useRef<number | null>(null);
-  const playbackEndFallbackRef = useRef<number | null>(null);
-  const activePlaybackSourcesRef = useRef(0);
-  const serverAudioStoppedRef = useRef(false);
-  const playbackStartedRef = useRef(false);
   const [mode, setMode] = useState<TestMode>('voice');
   const [runId, setRunId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -49,6 +37,28 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const [error, setError] = useState<string | null>(null);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [textMessage, setTextMessage] = useState('');
+
+  const audio = useAudioIO({
+    onCapture: (chunk) => {
+      const socket = socketRef.current;
+      if (socket?.readyState === WebSocket.OPEN) socket.send(chunk);
+    },
+    onCaptureStarted: () => appendLog('microphone.ready'),
+    onError: (message) => setError(message),
+  });
+
+  useEffect(() => {
+    return () => {
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        try { socketRef.current.send(JSON.stringify({ type: 'stop' })); } catch { /* ignore */ }
+      }
+      socketRef.current?.close();
+      socketRef.current = null;
+      audioRef.current?.pause();
+      audioRef.current = null;
+      // useAudioIO's own cleanup effect handles audio teardown.
+    };
+  }, []);
 
   if (!open) return null;
 
@@ -97,119 +107,6 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     appendLog(formatRuntimeEvent(event));
   };
 
-  const clearMicrophoneStartFallback = () => {
-    if (microphoneStartFallbackRef.current !== null) {
-      window.clearTimeout(microphoneStartFallbackRef.current);
-      microphoneStartFallbackRef.current = null;
-    }
-    if (playbackEndFallbackRef.current !== null) {
-      window.clearTimeout(playbackEndFallbackRef.current);
-      playbackEndFallbackRef.current = null;
-    }
-  };
-
-  const cleanupPlayback = async () => {
-    activePlaybackSourcesRef.current = 0;
-    serverAudioStoppedRef.current = false;
-    playbackStartedRef.current = false;
-    if (playbackContextRef.current && playbackContextRef.current.state !== 'closed') {
-      await playbackContextRef.current.close();
-    }
-    playbackContextRef.current = null;
-    nextPlaybackTimeRef.current = 0;
-  };
-
-  const maybeBeginMicrophoneAfterPlayback = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
-    if (!serverAudioStoppedRef.current || activePlaybackSourcesRef.current > 0) return;
-    if (playbackStartedRef.current) appendLog('audio.playback.ended');
-    clearMicrophoneStartFallback();
-    playbackEndFallbackRef.current = window.setTimeout(
-      () => beginMicrophoneStreaming(socket, stream, audioContext),
-      250,
-    );
-  };
-
-  const playPcmChunk = async (chunk: ArrayBuffer, socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
-    if (chunk.byteLength === 0) return;
-    const context = playbackContextRef.current ?? new AudioContext({ sampleRate: 24000 });
-    playbackContextRef.current = context;
-    if (context.state === 'suspended') await context.resume();
-
-    const samples = new Int16Array(chunk);
-    const buffer = context.createBuffer(1, samples.length, 24000);
-    const channel = buffer.getChannelData(0);
-    for (let index = 0; index < samples.length; index += 1) {
-      channel[index] = samples[index] / 32768;
-    }
-
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(context.destination);
-    const startAt = Math.max(context.currentTime + 0.02, nextPlaybackTimeRef.current);
-    activePlaybackSourcesRef.current += 1;
-    if (!playbackStartedRef.current) {
-      playbackStartedRef.current = true;
-      appendLog('audio.playback.started');
-    }
-    source.onended = () => {
-      activePlaybackSourcesRef.current = Math.max(0, activePlaybackSourcesRef.current - 1);
-      maybeBeginMicrophoneAfterPlayback(socket, stream, audioContext);
-    };
-    source.start(startAt);
-    nextPlaybackTimeRef.current = startAt + buffer.duration;
-  };
-
-  const cleanupAudioInput = async () => {
-    clearMicrophoneStartFallback();
-    microphoneStartedRef.current = false;
-    processorRef.current?.disconnect();
-    sourceRef.current?.disconnect();
-    gainRef.current?.disconnect();
-    processorRef.current = null;
-    sourceRef.current = null;
-    gainRef.current = null;
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-    mediaStreamRef.current = null;
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      await audioContextRef.current.close();
-    }
-    audioContextRef.current = null;
-  };
-
-  const beginMicrophoneStreaming = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
-    if (microphoneStartedRef.current || socket.readyState !== WebSocket.OPEN) return;
-    clearMicrophoneStartFallback();
-    microphoneStartedRef.current = true;
-    appendLog('microphone.ready');
-    startStreamingMicrophone(socket, stream, audioContext);
-  };
-
-  const beginMicrophoneAfterPlayback = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
-    serverAudioStoppedRef.current = true;
-    maybeBeginMicrophoneAfterPlayback(socket, stream, audioContext);
-  };
-
-  const startStreamingMicrophone = (socket: WebSocket, stream: MediaStream, audioContext: AudioContext) => {
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
-    const gain = audioContext.createGain();
-    gain.gain.value = 0;
-
-    processor.onaudioprocess = (event) => {
-      if (socket.readyState !== WebSocket.OPEN) return;
-      const samples = event.inputBuffer.getChannelData(0);
-      const pcm = float32ToPcm16(samples);
-      socket.send(pcm.buffer);
-    };
-
-    source.connect(processor);
-    processor.connect(gain);
-    gain.connect(audioContext.destination);
-    sourceRef.current = source;
-    processorRef.current = processor;
-    gainRef.current = gain;
-  };
-
   const startVoice = async () => {
     if (!agentId) {
       setError('Save an agent before starting a test call.');
@@ -219,15 +116,8 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setAudioSrc(null);
     setMessages([]);
     setRunId(null);
-    activePlaybackSourcesRef.current = 0;
-    serverAudioStoppedRef.current = false;
-    playbackStartedRef.current = false;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioContext = new AudioContext();
-      mediaStreamRef.current = stream;
-      audioContextRef.current = audioContext;
-
+      const audioContext = await audio.acquireMic();
       const session = await createTestSession(agentId);
       setRunId(session.run_id);
       const socket = new WebSocket(websocketUrl(session.websocket_url.replace('/ws/', '/stream/ws/')));
@@ -237,31 +127,21 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         setActive(true);
         appendLog(`session.open ${session.run_id}`);
         socket.send(JSON.stringify({ type: 'start', sample_rate: audioContext.sampleRate }));
-        if (session.first_message?.trim()) {
-          appendLog('waiting.initial_greeting');
-          microphoneStartFallbackRef.current = window.setTimeout(
-            () => beginMicrophoneStreaming(socket, stream, audioContext),
-            15000,
-          );
-        } else {
-          beginMicrophoneStreaming(socket, stream, audioContext);
-        }
+        audio.scheduleCapture(Boolean(session.first_message?.trim()));
       };
       socket.onmessage = (message) => {
         if (message.data instanceof ArrayBuffer) {
-          void playPcmChunk(message.data, socket, stream, audioContext).catch(() => {
-            setError('Audio arrived, but browser playback failed.');
-          });
+          void audio.enqueuePlayback(message.data);
           return;
         }
         const event = JSON.parse(message.data) as RuntimeMessage;
         handleRuntimeEvent(event);
         if (event.type === 'runtime.error') {
           setError(event.message ?? 'Runtime error while running the test call.');
-          beginMicrophoneStreaming(socket, stream, audioContext);
+          audio.forceCaptureStart();
         }
         if (event.type === 'audio.output.stopped') {
-          beginMicrophoneAfterPlayback(socket, stream, audioContext);
+          audio.signalServerStopped();
         }
         if (event.type === 'audio.output' && event.audio_base64) {
           audioRef.current?.pause();
@@ -278,12 +158,10 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         setActive(false);
         appendLog('session.closed');
         onSessionUpdated();
-        void cleanupAudioInput();
-        void cleanupPlayback();
+        void audio.cleanup();
       };
     } catch (err) {
-      await cleanupAudioInput();
-      await cleanupPlayback();
+      await audio.cleanup();
       setError(err instanceof Error ? err.message : 'Unable to start test call.');
     }
   };
@@ -341,8 +219,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setAudioSrc(null);
     setActive(false);
     onSessionUpdated();
-    void cleanupAudioInput();
-    void cleanupPlayback();
+    void audio.cleanup();
   };
 
   const closePanel = () => {
@@ -394,15 +271,6 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       </div>
     </div>
   );
-}
-
-function float32ToPcm16(samples: Float32Array) {
-  const pcm = new Int16Array(samples.length);
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[index]));
-    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-  }
-  return pcm;
 }
 
 function formatRuntimeEvent(event: RuntimeMessage) {
