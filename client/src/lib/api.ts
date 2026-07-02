@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentRecord, RunRecord, TestSession, TextTurn } from './types';
+import type { AgentConfig, AgentRecord, DeepgramCatalog, RunRecord, TestSession, TextTurn } from './types';
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -65,6 +65,10 @@ export async function createTextTurn(
     body: JSON.stringify({ message }),
     signal,
   });
+}
+
+export async function fetchDeepgramCatalog(signal?: AbortSignal): Promise<DeepgramCatalog> {
+  return request<DeepgramCatalog>('/api/providers/deepgram/catalog', { signal });
 }
 
 export function isAbortError(error: unknown): boolean {

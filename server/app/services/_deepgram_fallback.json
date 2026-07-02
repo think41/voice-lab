@@ -1,0 +1,18 @@
+{
+  "tts": [
+    {"canonical_name": "aura-asteria-en", "label": "Aura Asteria", "architecture": "aura", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-luna-en", "label": "Aura Luna", "architecture": "aura", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-stella-en", "label": "Aura Stella", "architecture": "aura", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-athena-en", "label": "Aura Athena", "architecture": "aura", "languages": ["en", "en-GB"], "accent": "British", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-2-thalia-en", "label": "Aura 2 Thalia", "architecture": "aura-2", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-2-orion-en", "label": "Aura 2 Orion", "architecture": "aura-2", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-2-vesta-en", "label": "Aura 2 Vesta", "architecture": "aura-2", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []},
+    {"canonical_name": "aura-2-zeus-en", "label": "Aura 2 Zeus", "architecture": "aura-2", "languages": ["en", "en-US"], "accent": "American", "age": null, "sample": null, "image": null, "tags": []}
+  ],
+  "stt": [
+    {"canonical_name": "nova-3-general", "label": "Nova-3 General", "architecture": "nova-3", "languages": ["en", "en-US"], "multilingual": true},
+    {"canonical_name": "nova-2-general", "label": "Nova-2 General", "architecture": "nova-2", "languages": ["en", "en-US"], "multilingual": false},
+    {"canonical_name": "nova-2-conversationalai", "label": "Nova-2 Conversational AI", "architecture": "nova-2", "languages": ["en", "en-US"], "multilingual": false},
+    {"canonical_name": "nova-2-phonecall", "label": "Nova-2 Phonecall", "architecture": "nova-2", "languages": ["en", "en-US"], "multilingual": false}
+  ]
+}

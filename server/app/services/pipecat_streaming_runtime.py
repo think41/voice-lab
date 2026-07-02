@@ -82,9 +82,20 @@ class UserTranscriptBridge(FrameProcessor):
         super().__init__()
         self._record_trace = record_trace
         self._send_event = send_event
+        self._stt_request_id_captured = False
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
+
+        is_transcript = isinstance(frame, (TranscriptionFrame, InterimTranscriptionFrame))
+        if is_transcript and not self._stt_request_id_captured:
+            request_id = _extract_deepgram_request_id(getattr(frame, "result", None))
+            if request_id:
+                self._stt_request_id_captured = True
+                await self._record_trace(
+                    "provider.request_id",
+                    {"provider": "deepgram", "kind": "stt", "request_id": request_id},
+                )
 
         if isinstance(frame, InterimTranscriptionFrame) and frame.text.strip():
             await self._send_event({"type": "transcript.partial", "text": frame.text})
@@ -94,6 +105,35 @@ class UserTranscriptBridge(FrameProcessor):
             await self._send_event({"type": "agent.thinking"})
 
         await self.push_frame(frame, direction)
+
+
+def _extract_deepgram_ws_request_id(tts_service: Any) -> str | None:
+    """Read `dg-request-id` from the Deepgram TTS websocket handshake response."""
+    ws = getattr(tts_service, "_websocket", None)
+    if ws is None:
+        return None
+    response = getattr(ws, "response", None)
+    headers = getattr(response, "headers", None) if response is not None else None
+    if headers is None:
+        return None
+    try:
+        return headers.get("dg-request-id") or headers.get("Dg-Request-Id")
+    except AttributeError:
+        return None
+
+
+def _extract_deepgram_request_id(result: Any) -> str | None:
+    if result is None:
+        return None
+    metadata = getattr(result, "metadata", None)
+    if metadata is None and isinstance(result, dict):
+        metadata = result.get("metadata")
+    if metadata is None:
+        return None
+    request_id = getattr(metadata, "request_id", None)
+    if request_id is None and isinstance(metadata, dict):
+        request_id = metadata.get("request_id")
+    return str(request_id) if request_id else None
 
 
 class AssistantTraceBridge(FrameProcessor):
@@ -219,6 +259,16 @@ class PipecatStreamingRuntime:
             encoding="linear16",
             text_transforms=[("*", normalize_tts_text)],
         )
+
+        @tts.event_handler("on_connected")
+        async def _capture_tts_request_id(_service) -> None:
+            request_id = _extract_deepgram_ws_request_id(tts)
+            if request_id:
+                await record_trace(
+                    "provider.request_id",
+                    {"provider": "deepgram", "kind": "tts", "request_id": request_id},
+                )
+
         async def send_event(payload: dict[str, Any]) -> None:
             await websocket.send_json(payload)
 

@@ -1,8 +1,13 @@
 """Rate table and cost computation for provider-reported usage.
 
-No provider returns dollar amounts in the per-request response, so cost is
-derived at read time as `usage x rate`. Rates below are public list prices;
-override for negotiated / paid-tier pricing.
+For Deepgram STT/TTS we now prefer authoritative USD from
+`provider.usage` trace events (populated by the reconciliation job
+against Deepgram's /v1/projects/{id}/requests/{id} API). The rate rows
+below are used as fallback only when the reconciliation is unavailable
+(missing management key, provider outage, or events still settling).
+
+LLM rates are still fully local — Google/Gemini does not return per-call
+USD, so those rows remain authoritative for the LLM leg.
 """
 
 from decimal import Decimal
@@ -96,9 +101,37 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
     llm_cost = stt_cost = tts_cost = Decimal("0")
     llm_latencies_ms: list[float] = []
     tts_latencies_ms: list[float] = []
+    # Authoritative overrides sourced from provider.usage events (Deepgram).
+    auth_stt_usd = auth_tts_usd = Decimal("0")
+    auth_stt_seconds = Decimal("0")
+    auth_tts_chars = 0
+    stt_source = "derived"
+    tts_source = "derived"
 
     for event in events:
-        if event.event_type == "usage.llm":
+        if event.event_type == "provider.usage":
+            payload = event.payload or {}
+            if payload.get("provider") != "deepgram":
+                continue
+            kind = payload.get("kind")
+            usd = Decimal(str(payload.get("usd") or 0))
+            # Only trust the provider leg when USD is actually present.
+            # A zero/absent value means Deepgram hadn't settled that request
+            # yet; falling through to `source="provider"` would wipe the
+            # locally-derived cost for that leg.
+            if usd <= 0:
+                continue
+            if kind == "stt":
+                auth_stt_usd += usd
+                seconds = payload.get("duration_s")
+                if seconds is not None:
+                    auth_stt_seconds += Decimal(str(seconds))
+                stt_source = "provider"
+            elif kind == "tts":
+                auth_tts_usd += usd
+                auth_tts_chars += int(payload.get("characters") or 0)
+                tts_source = "provider"
+        elif event.event_type == "usage.llm":
             payload = event.payload or {}
             llm_prompt += int(payload.get("prompt_tokens") or 0)
             llm_completion += int(payload.get("completion_tokens") or 0)
@@ -127,7 +160,13 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
             elif "llm" in processor or "adk" in processor:
                 llm_latencies_ms.append(ms)
 
-    total_cost = llm_cost + stt_cost + tts_cost
+    # Prefer authoritative values from provider.usage when present.
+    effective_stt_cost = auth_stt_usd if stt_source == "provider" else stt_cost
+    effective_tts_cost = auth_tts_usd if tts_source == "provider" else tts_cost
+    effective_stt_seconds = auth_stt_seconds if stt_source == "provider" else stt_seconds
+    effective_tts_chars = auth_tts_chars if tts_source == "provider" else tts_chars
+
+    total_cost = llm_cost + effective_stt_cost + effective_tts_cost
     return {
         "llm": {
             "prompt_tokens": llm_prompt,
@@ -137,13 +176,15 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
             "avg_latency_ms": _avg(llm_latencies_ms),
         },
         "stt": {
-            "audio_seconds": _q(stt_seconds, "0.001"),
-            "cost_usd": _q(stt_cost),
+            "audio_seconds": _q(effective_stt_seconds, "0.001"),
+            "cost_usd": _q(effective_stt_cost),
+            "source": stt_source,
         },
         "tts": {
-            "characters": tts_chars,
-            "cost_usd": _q(tts_cost),
+            "characters": effective_tts_chars,
+            "cost_usd": _q(effective_tts_cost),
             "avg_latency_ms": _avg(tts_latencies_ms),
+            "source": tts_source,
         },
         "total_cost_usd": _q(total_cost),
     }

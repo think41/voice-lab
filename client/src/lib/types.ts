@@ -52,11 +52,13 @@ export interface UsageSummary {
   stt: {
     audio_seconds: number;
     cost_usd: number;
+    source?: 'derived' | 'provider';
   };
   tts: {
     characters: number;
     cost_usd: number;
     avg_latency_ms: number;
+    source?: 'derived' | 'provider';
   };
   total_cost_usd: number;
 }
@@ -76,4 +78,29 @@ export interface TextTurn {
   run_id: string;
   user_text: string;
   assistant_text: string;
+}
+
+export interface DeepgramVoice {
+  canonical_name: string;
+  label: string;
+  architecture: 'aura' | 'aura-2';
+  languages: string[];
+  accent: string | null;
+  age: string | null;
+  sample: string | null;
+  image: string | null;
+  tags: string[];
+}
+
+export interface DeepgramSttModel {
+  canonical_name: string;
+  label: string;
+  architecture: 'nova-2' | 'nova-3';
+  languages: string[];
+  multilingual: boolean;
+}
+
+export interface DeepgramCatalog {
+  tts: DeepgramVoice[];
+  stt: DeepgramSttModel[];
 }

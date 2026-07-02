@@ -7,7 +7,7 @@ import { AgentJsonEditor } from '../components/builder/AgentJsonEditor';
 import { AgentPalette } from '../components/builder/AgentPalette';
 import { Button } from '../components/ui/Button';
 import { Tabs } from '../components/ui/Tabs';
-import type { AgentConfig } from '../lib/types';
+import type { AgentConfig, DeepgramCatalog } from '../lib/types';
 
 type BuilderMode = 'canvas' | 'json';
 
@@ -15,9 +15,10 @@ interface BuilderViewProps {
   config: AgentConfig;
   onConfigChange: (config: AgentConfig) => void;
   onSave: () => void;
+  catalog: DeepgramCatalog | null;
 }
 
-export function BuilderView({ config, onConfigChange, onSave }: BuilderViewProps) {
+export function BuilderView({ config, onConfigChange, onSave, catalog }: BuilderViewProps) {
   const [mode, setMode] = useState<BuilderMode>('canvas');
   const [inspectorOpen, setInspectorOpen] = useState(true);
 
@@ -41,7 +42,7 @@ export function BuilderView({ config, onConfigChange, onSave }: BuilderViewProps
         )}
       </div>
       <div className="hidden w-[200px] border-l border-line bg-white xl:block"><AgentPalette /></div>
-      {inspectorOpen ? <AgentInspector config={config} onChange={onConfigChange} onSave={onSave} onClose={() => setInspectorOpen(false)} /> : null}
+      {inspectorOpen ? <AgentInspector config={config} onChange={onConfigChange} onSave={onSave} onClose={() => setInspectorOpen(false)} catalog={catalog} /> : null}
     </div>
   );
 }

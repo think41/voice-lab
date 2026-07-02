@@ -30,10 +30,21 @@ export function ReportsView({ runs, agent }: ReportsViewProps) {
     <div className="flex-1 overflow-auto bg-off p-6">
       <Breadcrumb agentName={agent.name} />
       <div className="mb-5">
-        <h1 className="text-lg font-semibold">Reports</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-lg font-semibold">Reports</h1>
+          {summary.providerReportedRuns > 0 ? (
+            <span
+              className="rounded-full border border-line bg-off px-2 py-0.5 text-[10px] font-medium text-muted"
+              title={`${summary.providerReportedRuns} of ${summary.conversations} runs reconciled against Deepgram's authoritative usage API.`}
+            >
+              Deepgram-reported · {summary.providerReportedRuns}/{summary.conversations}
+            </span>
+          ) : null}
+        </div>
         <p className="mt-1 text-xs text-faint">
-          Aggregated across every conversation for <span className="font-medium text-text">{agent.name}</span>. Cost
-          is derived from provider-reported usage (Gemini tokens, Deepgram audio-seconds and characters).
+          Aggregated across every conversation for <span className="font-medium text-text">{agent.name}</span>.
+          STT/TTS costs come from Deepgram's per-request USD when available; otherwise derived from the local
+          rate table. LLM cost is always derived (Gemini doesn't return per-call USD).
         </p>
       </div>
 

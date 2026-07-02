@@ -10,6 +10,7 @@ export interface ReportSummary {
   totalSttCostUsd: number;
   totalTtsCostUsd: number;
   totalTokens: number;
+  providerReportedRuns: number;
 }
 
 export function runDurationSec(run: RunRecord): number {
@@ -35,6 +36,7 @@ export function aggregate(runs: RunRecord[]): ReportSummary {
       totalSttCostUsd: 0,
       totalTtsCostUsd: 0,
       totalTokens: 0,
+      providerReportedRuns: 0,
     };
   }
 
@@ -44,6 +46,7 @@ export function aggregate(runs: RunRecord[]): ReportSummary {
   let totalStt = 0;
   let totalTts = 0;
   let totalTokens = 0;
+  let providerReportedRuns = 0;
 
   for (const run of runs) {
     totalDuration += runDurationSec(run);
@@ -52,6 +55,9 @@ export function aggregate(runs: RunRecord[]): ReportSummary {
     totalStt += run.usage_summary.stt.cost_usd;
     totalTts += run.usage_summary.tts.cost_usd;
     totalTokens += run.usage_summary.llm.total_tokens;
+    if (run.usage_summary.stt.source === 'provider' || run.usage_summary.tts.source === 'provider') {
+      providerReportedRuns += 1;
+    }
   }
 
   return {
@@ -64,6 +70,7 @@ export function aggregate(runs: RunRecord[]): ReportSummary {
     totalSttCostUsd: totalStt,
     totalTtsCostUsd: totalTts,
     totalTokens,
+    providerReportedRuns,
   };
 }
 

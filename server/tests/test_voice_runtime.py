@@ -28,6 +28,7 @@ def test_deepgram_voice_mapping_supports_current_and_legacy_saved_configs() -> N
     assert runtime._deepgram_voice_model("aura-asteria-en") == "aura-asteria-en"
     assert runtime._deepgram_voice_model("aura-luna-en") == "aura-luna-en"
     assert runtime._deepgram_voice_model("aura-2-orion-en") == "aura-2-orion-en"
+    assert runtime._deepgram_voice_model("aura-2-selene-en") == "aura-2-selene-en"
     assert runtime._deepgram_voice_model("Rachel") == "aura-asteria-en"
 
 

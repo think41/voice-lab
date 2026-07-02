@@ -20,18 +20,13 @@ TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger("uvicorn.error")
 
-SUPPORTED_DEEPGRAM_VOICES = {
-    "aura-asteria-en",
-    "aura-luna-en",
-    "aura-stella-en",
-    "aura-athena-en",
-    "aura-2-thalia-en",
-    "aura-2-orion-en",
-    "aura-2-vesta-en",
-    "aura-2-zeus-en",
-}
-
 LEGACY_DEEPGRAM_VOICES = {"Rachel": "aura-asteria-en"}
+
+# Deepgram TTS canonical names look like `aura-<voice>-<lang>` or `aura-2-<voice>-<lang>`.
+# The Builder UI populates voice options from Deepgram's live catalog
+# (see app.services.deepgram_catalog), so we accept anything matching that shape
+# and let Deepgram itself reject truly invalid names at synthesis time.
+DEEPGRAM_VOICE_PATTERN = re.compile(r"^aura(?:-2)?-[a-z0-9]+-[a-z]{2}(?:-[a-z]{2})?$")
 
 
 class PipecatAdkRuntime:
@@ -181,6 +176,6 @@ class PipecatAdkRuntime:
     def _deepgram_voice_model(self, voice: str) -> str:
         if voice in LEGACY_DEEPGRAM_VOICES:
             return LEGACY_DEEPGRAM_VOICES[voice]
-        if voice in SUPPORTED_DEEPGRAM_VOICES:
+        if DEEPGRAM_VOICE_PATTERN.match(voice):
             return voice
         raise RuntimeError(f"Unsupported Deepgram voice: {voice}")

@@ -1,9 +1,15 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { Plus, Trash2, X } from 'lucide-react';
+import { Pause, Play, Plus, Trash2, X } from 'lucide-react';
 
-import { modelOptions, sttModelOptions, sttProviderOptions, ttsProviderOptions, voiceOptions } from '../../data/providerOptions';
-import type { AgentConfig } from '../../lib/types';
+import {
+  fallbackSttOptions,
+  fallbackVoiceOptions,
+  modelOptions,
+  sttProviderOptions,
+  ttsProviderOptions,
+} from '../../data/providerOptions';
+import type { AgentConfig, DeepgramCatalog } from '../../lib/types';
 import { Button } from '../ui/Button';
 
 interface AgentInspectorProps {
@@ -11,13 +17,82 @@ interface AgentInspectorProps {
   onChange: (config: AgentConfig) => void;
   onSave: () => void;
   onClose: () => void;
+  catalog: DeepgramCatalog | null;
 }
 
-export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspectorProps) {
+export function AgentInspector({ config, onChange, onSave, onClose, catalog }: AgentInspectorProps) {
   const update = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) => onChange({ ...config, [key]: value });
   const addTool = () => update('tools', [...config.tools, { name: 'new_tool', description: '', enabled: true }]);
   const updateTool = (index: number, name: string) => update('tools', config.tools.map((tool, i) => i === index ? { ...tool, name } : tool));
   const removeTool = (index: number) => update('tools', config.tools.filter((_, i) => i !== index));
+
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const voiceOptions = useMemo(() => {
+    if (catalog?.tts?.length) {
+      return catalog.tts.map((voice) => {
+        // Drop the "Aura" / "Aura 2" prefix — it's redundant given the TTS
+        // provider is already Deepgram Aura. Keep the given name + accent.
+        const shortLabel = voice.label.replace(/^Aura(?:\s*2)?\s+/i, '');
+        return {
+          value: voice.canonical_name,
+          label: voice.accent ? `${shortLabel} — ${voice.accent}` : shortLabel,
+        };
+      });
+    }
+    return fallbackVoiceOptions;
+  }, [catalog]);
+
+  const sttModelOptions = useMemo(() => {
+    if (catalog?.stt?.length) {
+      return catalog.stt.map((model) => ({
+        value: model.canonical_name,
+        label: model.label,
+      }));
+    }
+    return fallbackSttOptions;
+  }, [catalog]);
+
+  const selectedVoice = catalog?.tts.find((voice) => voice.canonical_name === config.tts_voice) ?? null;
+
+  useEffect(() => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    setIsPlaying(false);
+  }, [config.tts_voice]);
+
+  useEffect(() => {
+    return () => {
+      const audio = previewAudioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.src = '';
+      }
+    };
+  }, []);
+
+  const togglePreview = () => {
+    if (!selectedVoice?.sample) return;
+    let audio = previewAudioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.onended = () => setIsPlaying(false);
+      audio.onpause = () => setIsPlaying(false);
+      audio.onplay = () => setIsPlaying(true);
+      previewAudioRef.current = audio;
+    }
+    if (isPlaying) {
+      audio.pause();
+      return;
+    }
+    if (audio.src !== selectedVoice.sample) {
+      audio.src = selectedVoice.sample;
+    }
+    void audio.play();
+  };
 
   return (
     <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-white">
@@ -44,7 +119,26 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
             <Select value={config.tts_provider} options={ttsProviderOptions} onChange={(value) => update('tts_provider', value)} />
           </Field>
           <Field label="Voice">
-            <Select value={config.tts_voice} options={voiceOptions} onChange={(value) => update('tts_voice', value)} />
+            <div className="mt-1 flex items-center gap-1.5">
+              <select
+                className="min-w-0 flex-1 truncate rounded-md border border-line bg-white px-2.5 py-2 text-xs"
+                value={config.tts_voice}
+                onChange={(event) => update('tts_voice', event.target.value)}
+              >
+                {voiceOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                title={isPlaying ? 'Pause preview' : 'Preview voice'}
+                disabled={!selectedVoice?.sample}
+                onClick={togglePreview}
+                className="flex w-[34px] h-[34px] shrink-0 items-center justify-center rounded-md border border-line text-faint hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+              </button>
+            </div>
           </Field>
         </div>
         <Field label={`Temperature ${config.temperature.toFixed(1)}`}>

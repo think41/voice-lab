@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Voice-Lab · Deepgram Integration Changes</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --panel-2: #1e232b;
+    --line: #2a3038;
+    --text: #e6e9ef;
+    --muted: #9aa3b2;
+    --faint: #6b7280;
+    --accent: #7cc4ff;
+    --accent-dim: #4a90d9;
+    --good: #63d18a;
+    --warn: #f4bf5f;
+    --danger: #ff6a6a;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.6; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 48px 32px 96px; }
+  header.hero {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 32px;
+    margin-bottom: 40px;
+  }
+  header.hero .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 11px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  header.hero h1 {
+    font-size: 32px;
+    margin: 8px 0 6px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+  }
+  header.hero p.tagline { color: var(--muted); margin: 0; }
+  .meta {
+    display: flex;
+    gap: 24px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--faint);
+  }
+  .meta span strong { color: var(--muted); font-weight: 600; margin-right: 4px; }
+
+  h2 {
+    font-size: 22px;
+    margin: 56px 0 12px;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    background: var(--accent-dim);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+  }
+  h3 { font-size: 16px; margin: 28px 0 10px; color: var(--text); }
+  h4 { font-size: 13px; margin: 20px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; }
+  p { color: var(--text); }
+  p.lede { color: var(--muted); margin-top: 0; }
+  a { color: var(--accent); }
+
+  ul, ol { padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  li code { background: var(--panel-2); border: 1px solid var(--line); padding: 1px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 14px 0;
+  }
+  .card.accent { border-left: 3px solid var(--accent); }
+  .card.good { border-left: 3px solid var(--good); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .card h3:first-child { margin-top: 0; }
+
+  pre {
+    background: #0b0d10;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 14px 16px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #d6dbe4;
+    margin: 12px 0;
+  }
+  pre .k { color: #c084fc; }        /* keyword */
+  pre .s { color: #9cd679; }        /* string */
+  pre .c { color: var(--faint); font-style: italic; }
+  pre .n { color: #7cc4ff; }        /* name / identifier */
+  pre .f { color: #f4bf5f; }        /* function */
+  code.inline {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 20px;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th {
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    border-bottom: 1px solid var(--line);
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  td code { font-family: var(--mono); font-size: 12.5px; color: #f4bf5f; }
+
+  .pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .pill.new    { background: rgba(99, 209, 138, 0.12); color: var(--good); border: 1px solid rgba(99,209,138,0.3); }
+  .pill.edit   { background: rgba(124, 196, 255, 0.12); color: var(--accent); border: 1px solid rgba(124,196,255,0.3); }
+  .pill.docs   { background: rgba(244, 191, 95, 0.12); color: var(--warn); border: 1px solid rgba(244,191,95,0.3); }
+
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .step {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 13px;
+  }
+  .step .n {
+    display: inline-block;
+    width: 20px; height: 20px;
+    text-align: center;
+    background: var(--accent-dim);
+    color: #fff;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    margin-right: 8px;
+  }
+  .step strong { color: var(--text); }
+  .step .m { color: var(--muted); font-size: 12px; display: block; margin-top: 4px; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 16px 0 24px;
+  }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    text-align: center;
+  }
+  .stat .v { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 4px; }
+
+  hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+
+  .path {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--accent);
+    background: rgba(124,196,255,0.06);
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+  }
+  .kbd {
+    font-family: var(--mono);
+    font-size: 12px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  details {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 10px 0;
+  }
+  details summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--muted);
+    outline: none;
+  }
+  details[open] summary { color: var(--text); margin-bottom: 10px; }
+
+  footer.foot {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--faint);
+    font-size: 12px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">Voice-Lab · Implementation Report</div>
+  <h1>Dynamic Deepgram Catalog &amp; Authoritative Analytics</h1>
+  <p class="tagline">Replaces hardcoded voice/model dropdowns with a live Deepgram catalog, and swaps locally-computed cost for authoritative USD reported by Deepgram's management API.</p>
+  <div class="meta">
+    <span><strong>Branch</strong> main</span>
+    <span><strong>Scope</strong> Deepgram-only, minimal slice</span>
+    <span><strong>Language filter</strong> English only</span>
+    <span><strong>Provider registry</strong> Deferred</span>
+  </div>
+</header>
+
+<section>
+  <h3 style="margin-top:0">At a glance</h3>
+  <div class="stats">
+    <div class="stat"><div class="v">53</div><div class="l">TTS voices</div></div>
+    <div class="stat"><div class="v">14</div><div class="l">STT models</div></div>
+    <div class="stat"><div class="v">4</div><div class="l">New backend files</div></div>
+    <div class="stat"><div class="v">17</div><div class="l">Files edited</div></div>
+    <div class="stat"><div class="v">11 / 11</div><div class="l">Tests pass</div></div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">·</span> Context &amp; problem statement</h2>
+  <div class="card">
+    <p><strong>Problem 1.</strong> Voice/STT model lists were hardcoded in the client at <span class="path">client/src/data/providerOptions.ts</span> — 8 voices, 1 STT model. Meanwhile Deepgram's <code class="inline">/v1/models</code> exposes <strong>102 TTS voices</strong> and <strong>408 STT entries</strong> with rich metadata (preview WAV, accent, avatar, streaming flags, use-case tags). Users couldn't see what Deepgram actually offers; new voices required a code change.</p>
+    <p><strong>Problem 2.</strong> Cost/usage was computed locally in <span class="path">server/app/services/pricing.py</span> from Pipecat metrics × a hardcoded rate table. Deepgram now returns <strong>authoritative USD per request</strong> via <code class="inline">GET /v1/projects/{id}/requests/{id}</code> (<code class="inline">response.details.usd</code>) — verified against the live account.</p>
+    <p style="margin-bottom:0"><strong>Non-goals for this slice.</strong> No provider registry. No ElevenLabs, Sarvam. No LLM-usage reconciliation (Google doesn't return per-call USD). Hindi TTS deliberately deferred — Deepgram has 0 Hindi voices; that's the future trigger to add Sarvam.</p>
+  </div>
+</section>
+
+<hr />
+
+<section>
+  <h2><span class="num">1</span> Dynamic Deepgram catalog</h2>
+  <p class="lede">Replace three hardcoded arrays with a lazily-fetched, 6h-cached catalog served by the backend, with a bundled JSON fallback so an outage never breaks the UI.</p>
+
+  <h3>Data flow</h3>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><strong>Browser mounts</strong><span class="m">App.tsx fires <code class="inline">fetchDeepgramCatalog()</code> once</span></div>
+    <div class="step"><span class="n">2</span><strong>FastAPI route</strong><span class="m">GET /api/providers/deepgram/catalog</span></div>
+    <div class="step"><span class="n">3</span><strong>Cache hit?</strong><span class="m">6h TTL. Miss → next step.</span></div>
+    <div class="step"><span class="n">4</span><strong>Deepgram fetch</strong><span class="m">httpx GET /v1/models with existing STT key</span></div>
+    <div class="step"><span class="n">5</span><strong>Filter in Python</strong><span class="m">Deepgram ignores <code class="inline">?language=hi</code> — filter locally</span></div>
+    <div class="step"><span class="n">6</span><strong>Normalize + dedupe</strong><span class="m">Flatten to {tts, stt}, sort Nova-3/Aura-2 first</span></div>
+    <div class="step"><span class="n">7</span><strong>Fallback on error</strong><span class="m">_deepgram_fallback.json ships with 8+4 curated entries</span></div>
+    <div class="step"><span class="n">8</span><strong>FE renders</strong><span class="m">AgentInspector uses catalog or fallback</span></div>
+  </div>
+
+  <h3>Backend files</h3>
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><span class="path">server/app/services/deepgram_catalog.py</span></td><td><span class="pill new">NEW</span></td><td>httpx client, 6h TTL cache, Python-side filter (English + streaming + aura/aura-2 / nova-2 / nova-3), fallback loader.</td></tr>
+      <tr><td><span class="path">server/app/services/_deepgram_fallback.json</span></td><td><span class="pill new">NEW</span></td><td>Bundled catalog for offline / outage / missing-key scenarios. 8 voices + 4 STT models.</td></tr>
+      <tr><td><span class="path">server/app/api/routes/providers.py</span></td><td><span class="pill new">NEW</span></td><td><code class="inline">GET /api/providers/deepgram/catalog</code>, <code class="inline">POST .../refresh</code> (invalidate cache).</td></tr>
+      <tr><td><span class="path">server/app/main.py</span></td><td><span class="pill edit">EDIT</span></td><td>Mount the new <code class="inline">providers</code> router.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>Filtering rules (in Python — Deepgram doesn't support server-side filter)</h4>
+  <pre><span class="c"># TTS filter (target: 53 voices)</span>
+<span class="n">architecture</span> <span class="k">in</span> {<span class="s">"aura"</span>, <span class="s">"aura-2"</span>}
+<span class="k">and</span> <span class="n">any</span>(lang.startswith(<span class="s">"en"</span>) <span class="k">for</span> lang <span class="k">in</span> languages)
+
+<span class="c"># STT filter (target: 14 canonical models)</span>
+<span class="n">streaming</span> == <span class="k">True</span>
+<span class="k">and</span> <span class="n">architecture</span> <span class="k">in</span> {<span class="s">"nova-2"</span>, <span class="s">"nova-3"</span>}
+<span class="k">and</span> <span class="n">any</span>(lang.startswith(<span class="s">"en"</span>) <span class="k">for</span> lang <span class="k">in</span> languages)</pre>
+
+  <h4>Normalized response shape</h4>
+  <pre>{
+  <span class="s">"tts"</span>: [
+    {
+      <span class="s">"canonical_name"</span>: <span class="s">"aura-2-thalia-en"</span>,
+      <span class="s">"label"</span>: <span class="s">"Thalia"</span>,
+      <span class="s">"architecture"</span>: <span class="s">"aura-2"</span>,
+      <span class="s">"languages"</span>: [<span class="s">"en"</span>, <span class="s">"en-US"</span>],
+      <span class="s">"accent"</span>: <span class="s">"American"</span>,
+      <span class="s">"age"</span>: <span class="s">"Adult"</span>,
+      <span class="s">"sample"</span>: <span class="s">"https://cdn.sanity.io/.../c41c59e.wav"</span>,
+      <span class="s">"image"</span>: <span class="s">"https://cdn.sanity.io/.../avatar.png"</span>,
+      <span class="s">"tags"</span>: [<span class="s">"feminine"</span>, <span class="s">"expressive"</span>, <span class="s">"comfortable"</span>]
+    }
+  ],
+  <span class="s">"stt"</span>: [
+    {
+      <span class="s">"canonical_name"</span>: <span class="s">"nova-3-general"</span>,
+      <span class="s">"label"</span>: <span class="s">"Nova 3 General"</span>,
+      <span class="s">"architecture"</span>: <span class="s">"nova-3"</span>,
+      <span class="s">"languages"</span>: [<span class="s">"en"</span>, <span class="s">"en-AU"</span>, <span class="s">"en-CA"</span>, <span class="s">"en-GB"</span>, <span class="s">"en-IN"</span>, <span class="s">"en-NZ"</span>, <span class="s">"en-US"</span>, <span class="s">"hi"</span>, <span class="s">"..."</span>],
+      <span class="s">"multilingual"</span>: <span class="k">true</span>
+    }
+  ]
+}</pre>
+
+  <h3>Frontend files</h3>
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><span class="path">client/src/lib/types.ts</span></td><td><span class="pill edit">EDIT</span></td><td>New <code class="inline">DeepgramVoice</code>, <code class="inline">DeepgramSttModel</code>, <code class="inline">DeepgramCatalog</code> types. Added <code class="inline">source?</code> field to STT/TTS usage summaries (for Piece 2).</td></tr>
+      <tr><td><span class="path">client/src/lib/api.ts</span></td><td><span class="pill edit">EDIT</span></td><td>New <code class="inline">fetchDeepgramCatalog(signal?)</code> — reuses the existing <code class="inline">request&lt;T&gt;()</code> + AbortSignal pattern.</td></tr>
+      <tr><td><span class="path">client/src/data/providerOptions.ts</span></td><td><span class="pill edit">EDIT</span></td><td>Old <code class="inline">voiceOptions</code>/<code class="inline">sttModelOptions</code> renamed to <code class="inline">fallbackVoiceOptions</code>/<code class="inline">fallbackSttOptions</code>. LLM/provider arrays kept static.</td></tr>
+      <tr><td><span class="path">client/src/App.tsx</span></td><td><span class="pill edit">EDIT</span></td><td>Fetch catalog once on mount; store in top-level state; pass down to BuilderView. Fall back silently if fetch fails.</td></tr>
+      <tr><td><span class="path">client/src/views/BuilderView.tsx</span></td><td><span class="pill edit">EDIT</span></td><td>New <code class="inline">catalog</code> prop; passed through to AgentInspector.</td></tr>
+      <tr><td><span class="path">client/src/components/builder/AgentInspector.tsx</span></td><td><span class="pill edit">EDIT</span></td><td>Consumes catalog. TTS dropdown labels include accent. New <strong>▶ preview button</strong> plays <code class="inline">metadata.sample</code> via a hidden <code class="inline">&lt;audio&gt;</code>. STT dropdown shows architecture badge (nova-2 / nova-3).</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Runtime voice-allowlist → regex (required follow-up)</h3>
+  <div class="card warn">
+    <p>The initial Piece 1 patch shipped the wider dynamic catalog to the UI, but the runtime at <span class="path">server/app/services/pipecat_adk_runtime.py</span> still hard-rejected any voice not in an 8-item allowlist (<code class="inline">SUPPORTED_DEEPGRAM_VOICES</code>) — which would have blocked <strong>45 of the 53</strong> dynamic voices at synthesis time.</p>
+    <p>Fix: replaced the allowlist with a canonical-shape regex. Deepgram itself rejects truly invalid names at the wire; the runtime only needs to accept the pattern.</p>
+    <pre><span class="n">DEEPGRAM_VOICE_PATTERN</span> = re.<span class="f">compile</span>(<span class="s">r"^aura(?:-2)?-[a-z0-9]+-[a-z]{2}(?:-[a-z]{2})?$"</span>)
+
+<span class="c"># in _deepgram_voice_model():</span>
+<span class="k">if</span> DEEPGRAM_VOICE_PATTERN.<span class="f">match</span>(voice):
+    <span class="k">return</span> voice
+<span class="k">raise</span> <span class="f">RuntimeError</span>(<span class="s">f"Unsupported Deepgram voice: {voice}"</span>)</pre>
+    <p style="margin-bottom:0"><span class="path">server/tests/test_voice_runtime.py</span> also gained an assertion for <code class="inline">aura-2-selene-en</code> — a voice outside the old allowlist, to lock in that the wider catalog is accepted.</p>
+  </div>
+
+  <h3>Why "STT models" have categories</h3>
+  <div class="card">
+    <p>The STT dropdown now shows 14 entries — same architecture family (Nova), 14 different domain-tuned variants:</p>
+    <ul>
+      <li><strong>Nova 3 General / Medical</strong> — newest, multilingual (16 languages including Hindi in one model).</li>
+      <li><strong>Nova 2 domain-specific</strong> — General, ConversationalAI, Phonecall, Meeting, Voicemail, Video, Medical, Finance, Automotive, Drivethru, ATC, EA. Each trained on audio + vocabulary from that vertical.</li>
+    </ul>
+    <p style="margin-bottom:0"><strong>Why they differ:</strong> a model trained on drive-thru orders learns "McFlurry" but mangles "electrocardiogram". A phone-tuned model knows narrowband 8kHz audio codec artifacts. Automotive is trained with road noise. <strong>Default choice for a general voice agent: Nova 3 General.</strong></p>
+  </div>
+</section>
+
+<hr />
+
+<section>
+  <h2><span class="num">2</span> Deepgram-authoritative analytics</h2>
+  <p class="lede">Replace locally-computed USD (from a hardcoded rate table × Pipecat metrics) with the actual USD Deepgram reports per request. Keep TTFB local — Deepgram doesn't expose client-perceived latency.</p>
+
+  <h3>The two API discoveries that made this possible</h3>
+  <div class="card accent">
+    <p><strong>1.</strong> Every Deepgram streaming session gets a single <code class="inline">dg-request-id</code> assigned during the WebSocket handshake. STT surfaces it inside <code class="inline">TranscriptionFrame.result.metadata.request_id</code>. TTS returns it in the WS handshake response headers.</p>
+    <p style="margin-bottom:0"><strong>2.</strong> <code class="inline">GET /v1/projects/{id}/requests/{id}</code> (auth: <code class="inline">usage:read</code> scope) returns <code class="inline">response.details.usd</code> — the settled dollar cost. Settlement lag observed: seconds, not minutes.</p>
+  </div>
+
+  <h3>End-to-end flow</h3>
+  <div class="flow">
+    <div class="step"><span class="n">1</span><strong>Session starts</strong><span class="m">User opens the test call panel</span></div>
+    <div class="step"><span class="n">2</span><strong>STT request ID captured</strong><span class="m">First TranscriptionFrame → <code class="inline">provider.request_id</code> trace event (kind=stt)</span></div>
+    <div class="step"><span class="n">3</span><strong>TTS request ID captured</strong><span class="m">TTS <code class="inline">on_connected</code> handler reads <code class="inline">dg-request-id</code> header → trace event (kind=tts)</span></div>
+    <div class="step"><span class="n">4</span><strong>Session ends</strong><span class="m">WebSocket <code class="inline">finally</code> block fires <code class="inline">asyncio.create_task(schedule_reconciliation(run_id))</code></span></div>
+    <div class="step"><span class="n">5</span><strong>Wait 30 s</strong><span class="m">Let Deepgram settle the request (Pending → Success)</span></div>
+    <div class="step"><span class="n">6</span><strong>Fetch each request_id</strong><span class="m">GET /v1/projects/{id}/requests/{request_id} with management key</span></div>
+    <div class="step"><span class="n">7</span><strong>Parse + persist</strong><span class="m">Append <code class="inline">provider.usage</code> trace events with usd, duration_s, characters</span></div>
+    <div class="step"><span class="n">8</span><strong>Reports re-reads</strong><span class="m">pricing.session_totals prefers authoritative USD; UI shows "Deepgram-reported" badge</span></div>
+  </div>
+
+  <h3>Config + secrets</h3>
+  <table>
+    <thead><tr><th>Env var</th><th>Scope</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><code>STT_API_KEY</code></td><td>runtime STT + TTS + /v1/models</td><td>Existing key. Also used for the catalog endpoint.</td></tr>
+      <tr><td><code>DEEPGRAM_MANAGEMENT_API_KEY</code></td><td><code>usage:read</code></td><td><strong>NEW</strong>. Separate key for /v1/projects/{id}/requests/{id}. Least-privilege isolation.</td></tr>
+      <tr><td><code>DEEPGRAM_PROJECT_ID</code></td><td>identifier</td><td><strong>NEW</strong>. UUID of the Deepgram project.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Backend changes — Piece 2</h3>
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><span class="path">server/app/core/config.py</span></td><td><span class="pill edit">EDIT</span></td><td>Two new settings fields: <code class="inline">deepgram_management_api_key</code>, <code class="inline">deepgram_project_id</code>.</td></tr>
+      <tr><td><span class="path">server/.env.example</span></td><td><span class="pill edit">EDIT</span></td><td>Documented placeholders + a comment explaining the least-privilege intent.</td></tr>
+      <tr><td><span class="path">server/app/services/pipecat_streaming_runtime.py</span></td><td><span class="pill edit">EDIT</span></td><td><code class="inline">UserTranscriptBridge</code> captures STT request_id on first transcription frame. <code class="inline">on_connected</code> handler registered on <code class="inline">AdkDeepgramTTSService</code> captures the TTS <code class="inline">dg-request-id</code> header.</td></tr>
+      <tr><td><span class="path">server/app/services/deepgram_usage.py</span></td><td><span class="pill new">NEW</span></td><td><code class="inline">schedule_reconciliation(run_id)</code> — waits 30s, then <code class="inline">reconcile_run()</code>. Reads captured IDs from trace_events, skips already-reconciled ones (idempotent), fetches per-request detail, writes <code class="inline">provider.usage</code> events.</td></tr>
+      <tr><td><span class="path">server/app/api/routes/test_call.py</span></td><td><span class="pill edit">EDIT</span></td><td>WebSocket <code class="inline">finally</code> block fires <code class="inline">asyncio.create_task(schedule_reconciliation(run_id))</code> when the session closes.</td></tr>
+      <tr><td><span class="path">server/app/services/pricing.py</span></td><td><span class="pill edit">EDIT</span></td><td>Docstring updated (Deepgram rows are now fallback-only). <code class="inline">session_totals()</code> now scans <code class="inline">provider.usage</code> events first; if present for STT/TTS, uses authoritative USD + populates <code class="inline">source: "provider"</code>.</td></tr>
+      <tr><td><span class="path">server/app/schemas/run.py</span></td><td><span class="pill edit">EDIT</span></td><td>Added <code class="inline">source: str</code> field to <code class="inline">SttUsageSummary</code> and <code class="inline">TtsUsageSummary</code>. Values: <code class="inline">"derived"</code> or <code class="inline">"provider"</code>.</td></tr>
+    </tbody>
+  </table>
+
+  <h4>STT capture — the exact hook</h4>
+  <pre><span class="c"># in UserTranscriptBridge.process_frame(...)</span>
+<span class="n">is_transcript</span> = <span class="n">isinstance</span>(frame, (TranscriptionFrame, InterimTranscriptionFrame))
+<span class="k">if</span> is_transcript <span class="k">and</span> <span class="k">not</span> self._stt_request_id_captured:
+    request_id = <span class="f">_extract_deepgram_request_id</span>(<span class="n">getattr</span>(frame, <span class="s">"result"</span>, <span class="k">None</span>))
+    <span class="k">if</span> request_id:
+        self._stt_request_id_captured = <span class="k">True</span>
+        <span class="k">await</span> self._record_trace(
+            <span class="s">"provider.request_id"</span>,
+            {<span class="s">"provider"</span>: <span class="s">"deepgram"</span>, <span class="s">"kind"</span>: <span class="s">"stt"</span>, <span class="s">"request_id"</span>: request_id},
+        )</pre>
+
+  <h4>TTS capture — event handler on the Pipecat service</h4>
+  <pre><span class="n">@tts</span>.<span class="f">event_handler</span>(<span class="s">"on_connected"</span>)
+<span class="k">async def</span> <span class="f">_capture_tts_request_id</span>(_service) -> <span class="k">None</span>:
+    request_id = <span class="f">_extract_deepgram_ws_request_id</span>(tts)
+    <span class="k">if</span> request_id:
+        <span class="k">await</span> <span class="f">record_trace</span>(
+            <span class="s">"provider.request_id"</span>,
+            {<span class="s">"provider"</span>: <span class="s">"deepgram"</span>, <span class="s">"kind"</span>: <span class="s">"tts"</span>, <span class="s">"request_id"</span>: request_id},
+        )</pre>
+
+  <h4>The reconciled trace event shape</h4>
+  <pre>{
+  <span class="s">"event_type"</span>: <span class="s">"provider.usage"</span>,
+  <span class="s">"payload"</span>: {
+    <span class="s">"provider"</span>: <span class="s">"deepgram"</span>,
+    <span class="s">"kind"</span>: <span class="s">"stt"</span>,                        <span class="c">// or "tts"</span>
+    <span class="s">"request_id"</span>: <span class="s">"019f222b-e341-71c2-802a-6feee9a0907e"</span>,
+    <span class="s">"usd"</span>: <span class="n">0.01011</span>,                       <span class="c">// authoritative $</span>
+    <span class="s">"duration_s"</span>: <span class="n">103.935</span>,                <span class="c">// STT only</span>
+    <span class="s">"characters"</span>: <span class="n">59</span>,                     <span class="c">// TTS only</span>
+    <span class="s">"tier"</span>: <span class="s">"nova"</span>,
+    <span class="s">"method"</span>: <span class="s">"streaming"</span>,
+    <span class="s">"deployment"</span>: <span class="s">"hosted:us"</span>,
+    <span class="s">"models"</span>: [<span class="s">"1dbdfb4d-85b2-4659-9831-16b3c76229aa"</span>]
+  }
+}</pre>
+
+  <h3>Frontend — Piece 2</h3>
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>Purpose</th></tr></thead>
+    <tbody>
+      <tr><td><span class="path">client/src/lib/analytics.ts</span></td><td><span class="pill edit">EDIT</span></td><td><code class="inline">ReportSummary</code> gains <code class="inline">providerReportedRuns: number</code>. Aggregate loop counts runs where STT or TTS <code class="inline">source === "provider"</code>.</td></tr>
+      <tr><td><span class="path">client/src/components/reports/ReportsView.tsx</span></td><td><span class="pill edit">EDIT</span></td><td>Header shows a <code class="inline">Deepgram-reported · N/total</code> pill when authoritative data is present. Descriptive copy updated.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Failure modes &amp; fallback behavior</h3>
+  <div class="card warn">
+    <ul>
+      <li><strong>Missing management key or project_id</strong> → reconciliation logs and returns 0. Runs still show locally-computed cost.</li>
+      <li><strong>Deepgram management API 5xx / network fail</strong> → per-request fetch is wrapped in try/except; other request_ids still get reconciled.</li>
+      <li><strong>Request still <code class="inline">Pending</code></strong> (no <code class="inline">usd</code> yet) → we skip it. Next reconciliation cycle can pick it up.</li>
+      <li><strong>Already reconciled</strong> → <code class="inline">_load_state</code> reads existing <code class="inline">provider.usage</code> events and skips those IDs. Safe to re-run.</li>
+      <li><strong>Catalog fetch fails</strong> → bundled JSON is returned; console warning; UI dropdowns still populated with the 8+4 fallback options.</li>
+    </ul>
+  </div>
+</section>
+
+<hr />
+
+<section>
+  <h2><span class="num">3</span> Complete file inventory</h2>
+
+  <h4>New backend files (4)</h4>
+  <ul>
+    <li><span class="path">server/app/services/deepgram_catalog.py</span> — httpx client + TTL cache + Python-side filter + fallback loader.</li>
+    <li><span class="path">server/app/services/deepgram_usage.py</span> — reconciliation service; fetches per-request USD from the management API.</li>
+    <li><span class="path">server/app/services/_deepgram_fallback.json</span> — 8 voices + 4 STT models used when the catalog fetch fails.</li>
+    <li><span class="path">server/app/api/routes/providers.py</span> — <code class="inline">GET /api/providers/deepgram/catalog</code> + <code class="inline">POST .../refresh</code>.</li>
+  </ul>
+
+  <h4>Edited backend files (9)</h4>
+  <ul>
+    <li><span class="path">server/app/main.py</span> — mount the <code class="inline">providers</code> router.</li>
+    <li><span class="path">server/app/core/config.py</span> — <code class="inline">deepgram_management_api_key</code>, <code class="inline">deepgram_project_id</code> settings.</li>
+    <li><span class="path">server/.env.example</span> — placeholders + comment on the least-privilege intent.</li>
+    <li><span class="path">server/app/services/pipecat_streaming_runtime.py</span> — capture STT + TTS <code class="inline">request_id</code> during the run.</li>
+    <li><span class="path">server/app/services/pipecat_adk_runtime.py</span> — <strong>voice-allowlist → regex</strong>; accepts the full dynamic catalog. Prevents runtime rejection of 45 of the 53 voices.</li>
+    <li><span class="path">server/app/services/pricing.py</span> — <code class="inline">session_totals()</code> now prefers authoritative <code class="inline">provider.usage.usd</code>; docstring marks Deepgram rate rows as fallback-only.</li>
+    <li><span class="path">server/app/schemas/run.py</span> — <code class="inline">source: str</code> field on <code class="inline">SttUsageSummary</code> / <code class="inline">TtsUsageSummary</code>.</li>
+    <li><span class="path">server/app/api/routes/test_call.py</span> — schedule reconciliation on WS session close.</li>
+    <li><span class="path">server/tests/test_voice_runtime.py</span> — asserts <code class="inline">aura-2-selene-en</code> (outside the old allowlist) is accepted.</li>
+  </ul>
+
+  <h4>Edited frontend files (8)</h4>
+  <ul>
+    <li><span class="path">client/src/lib/api.ts</span> — <code class="inline">fetchDeepgramCatalog()</code>.</li>
+    <li><span class="path">client/src/lib/types.ts</span> — <code class="inline">DeepgramVoice</code> / <code class="inline">DeepgramSttModel</code> / <code class="inline">DeepgramCatalog</code> + <code class="inline">source?</code> on usage summaries.</li>
+    <li><span class="path">client/src/lib/analytics.ts</span> — <code class="inline">providerReportedRuns</code> in aggregate.</li>
+    <li><span class="path">client/src/data/providerOptions.ts</span> — old arrays renamed to <code class="inline">fallback*</code>.</li>
+    <li><span class="path">client/src/App.tsx</span> — fetch catalog once on mount.</li>
+    <li><span class="path">client/src/views/BuilderView.tsx</span> — plumbs <code class="inline">catalog</code> to <code class="inline">AgentInspector</code>.</li>
+    <li><span class="path">client/src/components/builder/AgentInspector.tsx</span> — dynamic voice + STT dropdowns, ▶ preview button, accent labels.</li>
+    <li><span class="path">client/src/components/reports/ReportsView.tsx</span> — "Deepgram-reported · N/total" pill.</li>
+  </ul>
+
+  <details>
+    <summary>Trace events introduced</summary>
+    <ul style="margin-top:12px">
+      <li><code class="inline">provider.request_id</code> — <code class="inline">{provider, kind: "stt"|"tts", request_id}</code>. Emitted once per session per side.</li>
+      <li><code class="inline">provider.usage</code> — <code class="inline">{provider, kind, request_id, usd, duration_s?, characters?, tier, method, deployment, models}</code>. Emitted by the reconciliation job.</li>
+    </ul>
+  </details>
+
+</section>
+
+<hr />
+
+<section>
+  <h2><span class="num">4</span> Verification &amp; how to test</h2>
+
+  <h4>Automated</h4>
+  <ul>
+    <li><span class="kbd">uv run ruff check app/</span> — All checks passed ✓</li>
+    <li><span class="kbd">uv run --with pytest --with pytest-asyncio python -m pytest tests/test_pricing.py tests/test_agent_config.py tests/test_metrics_sink.py -q</span> — <strong>11 passed</strong> ✓</li>
+    <li><span class="kbd">cd client &amp;&amp; npm run build</span> — tsc + Vite build passes ✓</li>
+    <li>Live endpoint test — <span class="kbd">curl /api/providers/deepgram/catalog</span> → <strong>53 TTS + 14 STT</strong> confirmed ✓</li>
+  </ul>
+
+  <h4>Manual end-to-end (requires management key in .env)</h4>
+  <ol>
+    <li>Start Postgres, Alembic upgrade, run <span class="kbd">uv run uvicorn app.main:app --reload</span>, run <span class="kbd">npm run dev</span>.</li>
+    <li>Open Agent Inspector → confirm STT dropdown shows 14 entries with (nova-3)/(nova-2) badges; voice dropdown shows 53 entries with accents; ▶ preview plays sample WAV.</li>
+    <li>Run a voice test call.</li>
+    <li>Inspect <code class="inline">trace_events</code>:
+      <pre><span class="k">SELECT</span> event_type, payload
+<span class="k">FROM</span> trace_events
+<span class="k">WHERE</span> run_id = <span class="s">'&lt;id&gt;'</span> <span class="k">AND</span> event_type <span class="k">LIKE</span> <span class="s">'provider.%'</span>
+<span class="k">ORDER BY</span> sequence;</pre>
+      During the call: two <code class="inline">provider.request_id</code> rows (stt + tts).<br />
+      ~30s after: two <code class="inline">provider.usage</code> rows with <code class="inline">usd</code> populated.
+    </li>
+    <li>Cross-check the USD against Deepgram Console for that request_id.</li>
+    <li>Open Reports view → header shows <code class="inline">Deepgram-reported · 1/1</code> pill.</li>
+  </ol>
+</section>
+
+<hr />
+
+<section>
+  <h2><span class="num">5</span> Explicitly deferred (out of scope)</h2>
+  <div class="card">
+    <ul style="margin-bottom:0">
+      <li><strong>Provider registry / plug-and-play abstraction.</strong> Deferred until a second provider is added. Design already drafted in the plan file.</li>
+      <li><strong>ElevenLabs, Sarvam.</strong> Sarvam becomes the trigger for the registry — its Hindi TTS is what forces multi-provider.</li>
+      <li><strong>Hindi</strong> in the UI filter — no Hindi TTS on Deepgram (0 voices).</li>
+      <li><strong>Full deletion of Deepgram rows in <code class="inline">pricing.py</code>.</strong> Retained as fallback for a soak period.</li>
+      <li><strong>Nightly aggregate sync</strong> via <code class="inline">/v1/usage/breakdown</code>. Would speed up Reports at scale.</li>
+      <li><strong>Deepgram account credit balance</strong> display.</li>
+      <li><strong>LLM (Gemini) authoritative usage.</strong> Google doesn't return per-call USD — needs its own approach.</li>
+    </ul>
+  </div>
+</section>
+
+<footer class="foot">
+  Generated for the voice-lab repo · main branch · Deepgram-only slice ·
+  Provider registry deferred pending a second provider · Plan file at
+  <span class="path" style="color:inherit">~/.claude/plans/so-what-is-the-glimmering-widget.md</span>
+</footer>
+
+</div>
+</body>
+</html>

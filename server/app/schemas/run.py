@@ -23,12 +23,14 @@ class LlmUsageSummary(BaseModel):
 class SttUsageSummary(BaseModel):
     audio_seconds: float = 0.0
     cost_usd: float = 0.0
+    source: str = "derived"  # "derived" (local rate table) or "provider" (Deepgram-reported)
 
 
 class TtsUsageSummary(BaseModel):
     characters: int = 0
     cost_usd: float = 0.0
     avg_latency_ms: float = 0.0
+    source: str = "derived"
 
 
 class UsageSummary(BaseModel):

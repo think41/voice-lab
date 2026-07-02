@@ -7,8 +7,8 @@ import { Modal } from './components/ui/Modal';
 import { Toast } from './components/ui/Toast';
 import { TestCallPanel } from './components/test-call/TestCallPanel';
 import { defaultAgentConfig } from './data/defaults';
-import { createAgent, isAbortError, listAgents, listRuns, updateAgent } from './lib/api';
-import type { AgentConfig, AgentRecord, RunRecord } from './lib/types';
+import { createAgent, fetchDeepgramCatalog, isAbortError, listAgents, listRuns, updateAgent } from './lib/api';
+import type { AgentConfig, AgentRecord, DeepgramCatalog, RunRecord } from './lib/types';
 import { BuilderView } from './views/BuilderView';
 import { ReportsView } from './views/ReportsView';
 import { RunsView } from './views/RunsView';
@@ -34,6 +34,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const [deployOpen, setDeployOpen] = useState(false);
   const [testCallOpen, setTestCallOpen] = useState(false);
+  const [catalog, setCatalog] = useState<DeepgramCatalog | null>(null);
 
   const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? null, [agents, selectedAgentId]);
   const agentRuns = useMemo(
@@ -45,6 +46,11 @@ export default function App() {
     const controller = new AbortController();
     void refreshAgents(controller.signal);
     void refreshRuns(controller.signal);
+    void fetchDeepgramCatalog(controller.signal)
+      .then(setCatalog)
+      .catch((error) => {
+        if (!isAbortError(error)) console.warn('Deepgram catalog fetch failed', error);
+      });
     return () => controller.abort();
   }, []);
 
@@ -110,7 +116,7 @@ export default function App() {
           onViewChange={setView}
           activeView={view}
         />
-        {view === 'builder' ? <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} /> : null}
+        {view === 'builder' ? <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} catalog={catalog} /> : null}
         {view === 'runs' ? <RunsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'reports' ? <ReportsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'settings' ? <SettingsView /> : null}
