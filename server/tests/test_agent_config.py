@@ -38,7 +38,7 @@ def test_agent_config_supports_elevenlabs_provider_defaults() -> None:
         tts_voice='',
     )
     assert config.stt_provider == 'elevenlabs'
-    assert config.stt_model == 'scribe_v2'
+    assert config.stt_model == 'scribe_v2_realtime'
     assert config.tts_provider == 'elevenlabs'
     assert config.tts_voice == 'JBFqnCBsd6RMkjVDRZzb'
 

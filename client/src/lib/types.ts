@@ -61,6 +61,21 @@ export interface UsageSummary {
   total_cost_usd: number;
 }
 
+export interface ProviderTraceSummary {
+  provider: string;
+  model: string;
+  transport: string;
+  voice: string | null;
+  provider_request_id: string | null;
+  provider_lookup_available: boolean;
+  unavailable_reason: string | null;
+}
+
+export interface RunProviderSummary {
+  stt: ProviderTraceSummary;
+  tts: ProviderTraceSummary;
+}
+
 export interface RunRecord {
   id: string;
   agent_id: string;
@@ -70,6 +85,7 @@ export interface RunRecord {
   created_at: string;
   trace_events: TraceEvent[];
   usage_summary: UsageSummary;
+  provider_summary: RunProviderSummary;
 }
 
 export interface TextTurn {

@@ -38,6 +38,21 @@ class UsageSummary(BaseModel):
     total_cost_usd: float = 0.0
 
 
+class ProviderTraceRead(BaseModel):
+    provider: str = ""
+    model: str = ""
+    transport: str = ""
+    voice: str | None = None
+    provider_request_id: str | None = None
+    provider_lookup_available: bool = False
+    unavailable_reason: str | None = None
+
+
+class RunProviderSummary(BaseModel):
+    stt: ProviderTraceRead = Field(default_factory=ProviderTraceRead)
+    tts: ProviderTraceRead = Field(default_factory=ProviderTraceRead)
+
+
 class RunRead(BaseModel):
     id: str
     agent_id: str
@@ -47,3 +62,4 @@ class RunRead(BaseModel):
     created_at: datetime
     trace_events: list[TraceEventRead] = Field(default_factory=list)
     usage_summary: UsageSummary = Field(default_factory=UsageSummary)
+    provider_summary: RunProviderSummary = Field(default_factory=RunProviderSummary)
