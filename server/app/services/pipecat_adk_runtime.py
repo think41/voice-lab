@@ -13,25 +13,16 @@ from google.adk.runners import Runner
 from google.genai import types
 
 from app.core.config import get_settings
-from app.schemas.agent import AgentConfig
+from app.schemas.agent import (
+    AgentConfig,
+    LEGACY_DEEPGRAM_VOICES,
+    SUPPORTED_DEEPGRAM_VOICES,
+)
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger("uvicorn.error")
-
-SUPPORTED_DEEPGRAM_VOICES = {
-    "aura-asteria-en",
-    "aura-luna-en",
-    "aura-stella-en",
-    "aura-athena-en",
-    "aura-2-thalia-en",
-    "aura-2-orion-en",
-    "aura-2-vesta-en",
-    "aura-2-zeus-en",
-}
-
-LEGACY_DEEPGRAM_VOICES = {"Rachel": "aura-asteria-en"}
 
 
 class PipecatAdkRuntime:
@@ -39,14 +30,10 @@ class PipecatAdkRuntime:
         settings = get_settings()
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required to run a voice test call")
-        if settings.stt_provider != "deepgram":
-            raise RuntimeError(f"Unsupported STT provider: {settings.stt_provider}")
-        if not settings.stt_api_key:
-            raise RuntimeError("STT_API_KEY is required to transcribe microphone audio")
-        if settings.tts_provider != "deepgram":
-            raise RuntimeError(f"Unsupported TTS provider: {settings.tts_provider}")
+        if not (settings.deepgram_api_key or settings.stt_api_key):
+            raise RuntimeError("A Deepgram API key is required to transcribe microphone audio")
         if not self._deepgram_tts_api_key():
-            raise RuntimeError("STT_API_KEY or TTS_API_KEY is required to speak agent responses")
+            raise RuntimeError("A Deepgram API key is required to speak agent responses")
         logger.info(
             "voice runtime validated gemini_key=%s stt_provider=%s stt_key=%s "
             "tts_provider=%s tts_key=%s",
@@ -176,7 +163,7 @@ class PipecatAdkRuntime:
 
     def _deepgram_tts_api_key(self) -> str | None:
         settings = get_settings()
-        return settings.stt_api_key or settings.tts_api_key
+        return settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
 
     def _deepgram_voice_model(self, voice: str) -> str:
         if voice in LEGACY_DEEPGRAM_VOICES:

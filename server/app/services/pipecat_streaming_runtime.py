@@ -24,6 +24,8 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.base_serializer import FrameSerializer
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
+from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService
+from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat_adk import AdkLLMService, SessionParams, VqlTTSMixin
 from pipecat_adk.frames import (
@@ -31,9 +33,10 @@ from pipecat_adk.frames import (
     VqlLLMFullResponseStartFrame,
     VqlLLMTextFrame,
 )
+from deepgram.listen.v1.types import ListenV1Metadata, ListenV1Results
 
 from app.core.config import get_settings
-from app.schemas.agent import AgentConfig
+from app.schemas.agent import AgentConfig, DEFAULT_TTS_MODEL_BY_PROVIDER
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 from app.services.pipeline_metrics import (
@@ -45,6 +48,7 @@ from app.services.pipeline_metrics import (
 logger = logging.getLogger("uvicorn.error")
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 EventSender = Callable[[dict[str, Any]], Awaitable[None]]
+_PROVIDER_REQUEST_EVENT = {"stt": "stt.provider_request", "tts": "tts.provider_request"}
 
 
 class RawPcmWebsocketSerializer(FrameSerializer):
@@ -73,8 +77,184 @@ class RawPcmWebsocketSerializer(FrameSerializer):
         return None
 
 
-class AdkDeepgramTTSService(VqlTTSMixin, DeepgramTTSService):
-    pass
+class ProviderRequestTraceMixin:
+    def __init__(
+        self,
+        *,
+        record_trace: TraceRecorder,
+        component: str,
+        provider: str,
+        transport: str,
+        provider_model: str,
+        run_tag: str | None = None,
+        voice: str | None = None,
+    ) -> None:
+        self._record_trace = record_trace
+        self._provider_request_component = component
+        self._provider_name = provider
+        self._provider_transport = transport
+        self._provider_model = provider_model
+        self._provider_run_tag = run_tag
+        self._provider_voice = voice
+        self._provider_request_recorded = False
+
+    async def _record_provider_request(self, provider_request_id: str | None) -> None:
+        if self._provider_request_recorded or not provider_request_id:
+            return
+        self._provider_request_recorded = True
+        payload: dict[str, Any] = {
+            "provider": self._provider_name,
+            "provider_request_id": provider_request_id,
+            "provider_object_type": "request",
+            "transport": self._provider_transport,
+            "model": self._provider_model,
+        }
+        if self._provider_run_tag:
+            payload["run_tag"] = self._provider_run_tag
+        if self._provider_voice:
+            payload["voice"] = self._provider_voice
+        await self._record_trace(_PROVIDER_REQUEST_EVENT[self._provider_request_component], payload)
+
+    async def _record_provider_request_from_headers(
+        self, headers: Any, *candidates: str
+    ) -> None:
+        if headers is None:
+            return
+        header_map = {str(key).lower(): value for key, value in headers.items()}
+        for candidate in candidates:
+            provider_request_id = header_map.get(candidate.lower())
+            if provider_request_id:
+                await self._record_provider_request(str(provider_request_id))
+                return
+
+    async def _record_provider_request_from_mapping(
+        self, payload: dict[str, Any] | None, *candidates: str
+    ) -> None:
+        if payload is None:
+            return
+        for candidate in candidates:
+            provider_request_id = payload.get(candidate)
+            if isinstance(provider_request_id, str) and provider_request_id.strip():
+                await self._record_provider_request(provider_request_id)
+                return
+
+
+class InstrumentedDeepgramSTTService(ProviderRequestTraceMixin, DeepgramSTTService):
+    def __init__(
+        self, *, record_trace: TraceRecorder, provider_model: str, run_tag: str, **kwargs: Any
+    ) -> None:
+        ProviderRequestTraceMixin.__init__(
+            self,
+            record_trace=record_trace,
+            component="stt",
+            provider="deepgram",
+            transport="websocket",
+            provider_model=provider_model,
+            run_tag=run_tag,
+        )
+        DeepgramSTTService.__init__(self, **kwargs)
+
+    async def _on_message(self, message: Any) -> None:
+        if isinstance(message, ListenV1Metadata):
+            await self._record_provider_request(message.request_id)
+        elif isinstance(message, ListenV1Results):
+            metadata = getattr(message, "metadata", None)
+            await self._record_provider_request(getattr(metadata, "request_id", None))
+        await super()._on_message(message)
+
+
+class AdkDeepgramTTSService(ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSService):
+    def __init__(
+        self,
+        *,
+        record_trace: TraceRecorder,
+        provider_model: str,
+        provider_voice: str,
+        run_tag: str,
+        **kwargs: Any,
+    ) -> None:
+        ProviderRequestTraceMixin.__init__(
+            self,
+            record_trace=record_trace,
+            component="tts",
+            provider="deepgram",
+            transport="websocket",
+            provider_model=provider_model,
+            run_tag=run_tag,
+            voice=provider_voice,
+        )
+        DeepgramTTSService.__init__(self, **kwargs)
+
+    async def _connect_websocket(self):
+        await super()._connect_websocket()
+        websocket = getattr(self, "_websocket", None)
+        response_headers = websocket.response.headers if websocket and websocket.response else {}
+        await self._record_provider_request_from_headers(response_headers, "dg-request-id")
+
+
+class InstrumentedElevenLabsSTTService(ProviderRequestTraceMixin, ElevenLabsRealtimeSTTService):
+    def __init__(
+        self, *, record_trace: TraceRecorder, provider_model: str, run_tag: str, **kwargs: Any
+    ) -> None:
+        ProviderRequestTraceMixin.__init__(
+            self,
+            record_trace=record_trace,
+            component="stt",
+            provider="elevenlabs",
+            transport="websocket",
+            provider_model=provider_model,
+            run_tag=run_tag,
+        )
+        ElevenLabsRealtimeSTTService.__init__(self, **kwargs)
+
+    async def _connect_websocket(self):
+        await super()._connect_websocket()
+        websocket = getattr(self, "_websocket", None)
+        response_headers = websocket.response.headers if websocket and websocket.response else {}
+        await self._record_provider_request_from_headers(
+            response_headers,
+            "x-request-id",
+            "request-id",
+            "xi-request-id",
+        )
+
+    async def _process_response(self, data: dict):
+        await self._record_provider_request_from_mapping(data, "request_id", "transcript_id")
+        await super()._process_response(data)
+
+
+class AdkElevenLabsTTSService(ProviderRequestTraceMixin, VqlTTSMixin, ElevenLabsTTSService):
+    def __init__(
+        self,
+        *,
+        record_trace: TraceRecorder,
+        provider_model: str,
+        provider_voice: str,
+        run_tag: str,
+        **kwargs: Any,
+    ) -> None:
+        ProviderRequestTraceMixin.__init__(
+            self,
+            record_trace=record_trace,
+            component="tts",
+            provider="elevenlabs",
+            transport="websocket",
+            provider_model=provider_model,
+            run_tag=run_tag,
+            voice=provider_voice,
+        )
+        ElevenLabsTTSService.__init__(self, **kwargs)
+
+    async def _connect_websocket(self):
+        await super()._connect_websocket()
+        websocket = getattr(self, "_websocket", None)
+        response_headers = websocket.response.headers if websocket and websocket.response else {}
+        await self._record_provider_request_from_headers(
+            response_headers,
+            "x-request-id",
+            "request-id",
+            "xi-request-id",
+        )
 
 
 class UserTranscriptBridge(FrameProcessor):
@@ -149,6 +329,108 @@ class PlaybackTraceBridge(FrameProcessor):
 
 
 class PipecatStreamingRuntime:
+    def _deepgram_api_key(self, settings) -> str | None:
+        return settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
+
+    def _elevenlabs_api_key(self, settings) -> str | None:
+        return settings.elevenlabs_api_key
+
+    def _build_stt_service(
+        self,
+        *,
+        settings,
+        config: AgentConfig,
+        sample_rate: int,
+        record_trace: TraceRecorder,
+        run_id: str,
+    ):
+        if config.stt_provider == "deepgram":
+            api_key = self._deepgram_api_key(settings)
+            if not api_key:
+                raise RuntimeError("DEEPGRAM_API_KEY is required for Deepgram STT")
+            return InstrumentedDeepgramSTTService(
+                record_trace=record_trace,
+                provider_model=config.stt_model,
+                run_tag=run_id,
+                api_key=api_key,
+                tag=run_id,
+                sample_rate=sample_rate,
+                settings=DeepgramSTTService.Settings(
+                    model=config.stt_model,
+                    endpointing=300,
+                    interim_results=True,
+                    punctuate=True,
+                    smart_format=True,
+                    utterance_end_ms="1000",
+                ),
+            )
+        if config.stt_provider == "elevenlabs":
+            api_key = self._elevenlabs_api_key(settings)
+            if not api_key:
+                raise RuntimeError("ELEVENLABS_API_KEY is required for ElevenLabs STT")
+            return InstrumentedElevenLabsSTTService(
+                record_trace=record_trace,
+                provider_model=config.stt_model,
+                run_tag=run_id,
+                api_key=api_key,
+                sample_rate=sample_rate,
+                model=config.stt_model,
+                commit_strategy=CommitStrategy.VAD,
+                include_timestamps=False,
+                enable_logging=True,
+            )
+        raise RuntimeError(f"Unsupported STT provider: {config.stt_provider}")
+
+    def _build_tts_service(
+        self,
+        *,
+        settings,
+        config: AgentConfig,
+        helper: PipecatAdkRuntime,
+        record_trace: TraceRecorder,
+        run_id: str,
+        normalize_tts_text: Callable[[str, Any], Awaitable[str]],
+    ):
+        if config.tts_provider == "deepgram":
+            api_key = self._deepgram_api_key(settings)
+            if not api_key:
+                raise RuntimeError("DEEPGRAM_API_KEY is required for Deepgram TTS")
+            voice = helper._deepgram_voice_model(config.tts_voice)
+            return (
+                AdkDeepgramTTSService(
+                    record_trace=record_trace,
+                    provider_model=voice,
+                    provider_voice=voice,
+                    run_tag=run_id,
+                    api_key=api_key,
+                    voice=voice,
+                    sample_rate=24000,
+                    encoding="linear16",
+                    text_transforms=[("*", normalize_tts_text)],
+                ),
+                voice,
+            )
+        if config.tts_provider == "elevenlabs":
+            api_key = self._elevenlabs_api_key(settings)
+            if not api_key:
+                raise RuntimeError("ELEVENLABS_API_KEY is required for ElevenLabs TTS")
+            model = DEFAULT_TTS_MODEL_BY_PROVIDER["elevenlabs"]
+            return (
+                AdkElevenLabsTTSService(
+                    record_trace=record_trace,
+                    provider_model=model,
+                    provider_voice=config.tts_voice,
+                    run_tag=run_id,
+                    api_key=api_key,
+                    voice_id=config.tts_voice,
+                    model=model,
+                    sample_rate=24000,
+                    enable_logging=True,
+                    text_transforms=[("*", normalize_tts_text)],
+                ),
+                model,
+            )
+        raise RuntimeError(f"Unsupported TTS provider: {config.tts_provider}")
 
     async def run_websocket(
         self,
@@ -164,11 +446,6 @@ class PipecatStreamingRuntime:
         settings = get_settings()
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required to run a streaming voice test call")
-        if not settings.stt_api_key:
-            raise RuntimeError("STT_API_KEY is required for streaming Deepgram STT")
-        tts_api_key = settings.stt_api_key or settings.tts_api_key
-        if not tts_api_key:
-            raise RuntimeError("STT_API_KEY or TTS_API_KEY is required for streaming Deepgram TTS")
 
         helper = PipecatAdkRuntime()
         app = helper.build_adk_app(config)
@@ -176,7 +453,6 @@ class PipecatStreamingRuntime:
         await ensure_adk_session(
             session_service, app_name=app.name, user_id=user_id, session_id=session_id
         )
-        voice = helper._deepgram_voice_model(config.tts_voice)
 
         transport = FastAPIWebsocketTransport(
             websocket=websocket,
@@ -197,28 +473,26 @@ class PipecatStreamingRuntime:
             ),
         )
         context = llm.create_context_aggregator()
-        stt = DeepgramSTTService(
-            api_key=settings.stt_api_key,
+        stt = self._build_stt_service(
+            settings=settings,
+            config=config,
             sample_rate=sample_rate,
-            settings=DeepgramSTTService.Settings(
-                model=config.stt_model,
-                endpointing=300,
-                interim_results=True,
-                punctuate=True,
-                smart_format=True,
-                utterance_end_ms="1000",
-            ),
+            record_trace=record_trace,
+            run_id=run_id,
         )
+
         async def normalize_tts_text(text: str, _aggregation_type: Any) -> str:
             return helper._normalize_for_speech(text)
 
-        tts = AdkDeepgramTTSService(
-            api_key=tts_api_key,
-            voice=voice,
-            sample_rate=24000,
-            encoding="linear16",
-            text_transforms=[("*", normalize_tts_text)],
+        tts, metrics_tts_model = self._build_tts_service(
+            settings=settings,
+            config=config,
+            helper=helper,
+            record_trace=record_trace,
+            run_id=run_id,
+            normalize_tts_text=normalize_tts_text,
         )
+
         async def send_event(payload: dict[str, Any]) -> None:
             await websocket.send_json(payload)
 
@@ -235,7 +509,7 @@ class PipecatStreamingRuntime:
             stt_model=config.stt_model,
             stt_sample_rate=sample_rate,
             tts_provider=config.tts_provider,
-            tts_model=voice,
+            tts_model=metrics_tts_model,
         )
         pipeline = Pipeline(
             [
@@ -303,4 +577,3 @@ class PipecatStreamingRuntime:
 
         await runner.run(task)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
-

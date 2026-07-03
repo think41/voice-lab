@@ -2,7 +2,18 @@ import type { ReactNode } from 'react';
 
 import { Plus, Trash2, X } from 'lucide-react';
 
-import { modelOptions, sttModelOptions, sttProviderOptions, ttsProviderOptions, voiceOptions } from '../../data/providerOptions';
+import {
+  getDefaultSttModel,
+  getDefaultTtsVoice,
+  getSttModelOptions,
+  getTtsVoiceFieldLabel,
+  getTtsVoiceOptions,
+  getTtsVoicePlaceholder,
+  modelOptions,
+  sttProviderOptions,
+  ttsProviderOptions,
+  usesTtsVoiceSelect,
+} from '../../data/providerOptions';
 import type { AgentConfig } from '../../lib/types';
 import { Button } from '../ui/Button';
 
@@ -15,9 +26,16 @@ interface AgentInspectorProps {
 
 export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspectorProps) {
   const update = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) => onChange({ ...config, [key]: value });
+  const updateSttProvider = (provider: string) =>
+    onChange({ ...config, stt_provider: provider, stt_model: getDefaultSttModel(provider) });
+  const updateTtsProvider = (provider: string) =>
+    onChange({ ...config, tts_provider: provider, tts_voice: getDefaultTtsVoice(provider) });
   const addTool = () => update('tools', [...config.tools, { name: 'new_tool', description: '', enabled: true }]);
   const updateTool = (index: number, name: string) => update('tools', config.tools.map((tool, i) => i === index ? { ...tool, name } : tool));
   const removeTool = (index: number) => update('tools', config.tools.filter((_, i) => i !== index));
+  const sttModelOptions = getSttModelOptions(config.stt_provider);
+  const ttsVoiceOptions = getTtsVoiceOptions(config.tts_provider);
+  const ttsVoiceUsesSelect = usesTtsVoiceSelect(config.tts_provider);
 
   return (
     <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-white">
@@ -33,7 +51,7 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
         <Field label="Instruction"><textarea rows={9} value={config.instruction} onChange={(event) => update('instruction', event.target.value)} /></Field>
         <div className="grid grid-cols-2 gap-2">
           <Field label="STT provider">
-            <Select value={config.stt_provider} options={sttProviderOptions} onChange={(value) => update('stt_provider', value)} />
+            <Select value={config.stt_provider} options={sttProviderOptions} onChange={updateSttProvider} />
           </Field>
           <Field label="STT model">
             <Select value={config.stt_model} options={sttModelOptions} onChange={(value) => update('stt_model', value)} />
@@ -41,10 +59,18 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Field label="TTS provider">
-            <Select value={config.tts_provider} options={ttsProviderOptions} onChange={(value) => update('tts_provider', value)} />
+            <Select value={config.tts_provider} options={ttsProviderOptions} onChange={updateTtsProvider} />
           </Field>
-          <Field label="Voice">
-            <Select value={config.tts_voice} options={voiceOptions} onChange={(value) => update('tts_voice', value)} />
+          <Field label={getTtsVoiceFieldLabel(config.tts_provider)}>
+            {ttsVoiceUsesSelect ? (
+              <Select value={config.tts_voice} options={ttsVoiceOptions} onChange={(value) => update('tts_voice', value)} />
+            ) : (
+              <input
+                value={config.tts_voice}
+                placeholder={getTtsVoicePlaceholder(config.tts_provider)}
+                onChange={(event) => update('tts_voice', event.target.value)}
+              />
+            )}
           </Field>
         </div>
         <Field label={`Temperature ${config.temperature.toFixed(1)}`}>

@@ -7,6 +7,7 @@ import { Modal } from './components/ui/Modal';
 import { Toast } from './components/ui/Toast';
 import { TestCallPanel } from './components/test-call/TestCallPanel';
 import { defaultAgentConfig } from './data/defaults';
+import { normalizeSpeechConfig } from './data/providerOptions';
 import { createAgent, isAbortError, listAgents, listRuns, updateAgent } from './lib/api';
 import type { AgentConfig, AgentRecord, RunRecord } from './lib/types';
 import { BuilderView } from './views/BuilderView';
@@ -18,13 +19,10 @@ type View = 'builder' | 'runs' | 'reports' | 'settings';
 const supportedModels = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']);
 
 function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
-  return {
+  return normalizeSpeechConfig({
     ...config,
     model: supportedModels.has(config.model) ? config.model : 'gemini-2.5-flash',
-    stt_provider: 'deepgram',
-    tts_provider: 'deepgram',
-    tts_voice: config.tts_voice === 'Rachel' ? 'aura-asteria-en' : config.tts_voice,
-  };
+  });
 }
 
 export default function App() {
