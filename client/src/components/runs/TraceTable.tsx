@@ -13,11 +13,13 @@ export function TraceTable({ run }: { run: RunRecord | null }) {
             label="STT"
             provider={run?.provider_summary.stt ?? null}
             usageLine={run ? `${formatAudioSeconds(run.usage_summary.stt.audio_seconds)} audio` : null}
+            sourceLine={run ? `Usage source: ${run.usage_summary.stt.source}` : null}
           />
           <ProviderCard
             label="TTS"
             provider={run?.provider_summary.tts ?? null}
             usageLine={run ? `${run.usage_summary.tts.characters} chars` : null}
+            sourceLine={run ? `Usage source: ${run.usage_summary.tts.source}` : null}
           />
           <UsageCard run={run} />
         </div>
@@ -63,10 +65,12 @@ function ProviderCard({
   label,
   provider,
   usageLine,
+  sourceLine,
 }: {
   label: string;
   provider: ProviderTraceSummary | null;
   usageLine: string | null;
+  sourceLine: string | null;
 }) {
   if (!provider) {
     return <SummaryCard title={label} lines={['No provider data captured yet.']} tone="muted" />;
@@ -77,6 +81,12 @@ function ProviderCard({
     provider.transport ? `Transport: ${provider.transport}` : null,
     provider.voice ? `Voice: ${provider.voice}` : null,
     usageLine,
+    sourceLine,
+    provider.provider_cost_usd != null ? `Provider cost: ${formatUsd(provider.provider_cost_usd)}` : null,
+    provider.tier ? `Tier: ${provider.tier}` : null,
+    provider.method ? `Method: ${provider.method}` : null,
+    provider.deployment ? `Deployment: ${provider.deployment}` : null,
+    provider.features.length ? `Features: ${provider.features.join(', ')}` : null,
     provider.provider_request_id ? `Request ID: ${provider.provider_request_id}` : null,
     provider.provider_lookup_available
       ? 'Provider lookup available'
@@ -104,10 +114,15 @@ function UsageCard({ run }: { run: RunRecord | null }) {
       title="Usage"
       subtitle={llm.total_tokens ? `${llm.total_tokens} LLM tokens` : 'No LLM usage yet'}
       lines={[
+        `LLM cost: ${formatUsd(llm.cost_usd)}`,
         `Prompt: ${llm.prompt_tokens}`,
         `Completion: ${llm.completion_tokens}`,
         `LLM latency: ${formatLatency(llm.avg_latency_ms)}`,
-        `Estimated total cost: ${formatUsd(total_cost_usd)}`,
+        `LLM source: ${llm.source}`,
+        `STT cost: ${formatUsd(run.usage_summary.stt.cost_usd)}`,
+        `TTS cost: ${formatUsd(run.usage_summary.tts.cost_usd)}`,
+        `Total cost: ${formatUsd(total_cost_usd)}`,
+        'Provider APIs currently do not supply Deepgram STT/TTS latency or Gemini token reconciliation here.',
       ]}
       tone="muted"
     />

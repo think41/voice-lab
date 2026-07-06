@@ -48,15 +48,18 @@ export interface UsageSummary {
     total_tokens: number;
     cost_usd: number;
     avg_latency_ms: number;
+    source: string;
   };
   stt: {
     audio_seconds: number;
     cost_usd: number;
+    source: string;
   };
   tts: {
     characters: number;
     cost_usd: number;
     avg_latency_ms: number;
+    source: string;
   };
   total_cost_usd: number;
 }
@@ -69,6 +72,12 @@ export interface ProviderTraceSummary {
   provider_request_id: string | null;
   provider_lookup_available: boolean;
   unavailable_reason: string | null;
+  provider_cost_usd: number | null;
+  method: string | null;
+  tier: string | null;
+  deployment: string | null;
+  provider_models: string[];
+  features: string[];
 }
 
 export interface RunProviderSummary {

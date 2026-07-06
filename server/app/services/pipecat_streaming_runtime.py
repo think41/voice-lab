@@ -22,6 +22,7 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.base_serializer import FrameSerializer
+from pipecat.services.settings import LLMSettings
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService
@@ -470,6 +471,19 @@ class PipecatStreamingRuntime:
             session_service=session_service,
             session_params=SessionParams(
                 app_name=app.name, user_id=user_id, session_id=session_id
+            ),
+            settings=LLMSettings(
+                model=config.model,
+                system_instruction=config.instruction,
+                temperature=config.temperature,
+                max_tokens=None,
+                top_p=None,
+                top_k=None,
+                frequency_penalty=None,
+                presence_penalty=None,
+                seed=None,
+                filter_incomplete_user_turns=False,
+                user_turn_completion_config=None,
             ),
         )
         context = llm.create_context_aggregator()

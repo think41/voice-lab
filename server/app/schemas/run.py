@@ -18,17 +18,20 @@ class LlmUsageSummary(BaseModel):
     total_tokens: int = 0
     cost_usd: float = 0.0
     avg_latency_ms: float = 0.0
+    source: str = "runtime"
 
 
 class SttUsageSummary(BaseModel):
     audio_seconds: float = 0.0
     cost_usd: float = 0.0
+    source: str = "runtime"
 
 
 class TtsUsageSummary(BaseModel):
     characters: int = 0
     cost_usd: float = 0.0
     avg_latency_ms: float = 0.0
+    source: str = "runtime"
 
 
 class UsageSummary(BaseModel):
@@ -46,6 +49,12 @@ class ProviderTraceRead(BaseModel):
     provider_request_id: str | None = None
     provider_lookup_available: bool = False
     unavailable_reason: str | None = None
+    provider_cost_usd: float | None = None
+    method: str | None = None
+    tier: str | None = None
+    deployment: str | None = None
+    provider_models: list[str] = Field(default_factory=list)
+    features: list[str] = Field(default_factory=list)
 
 
 class RunProviderSummary(BaseModel):
