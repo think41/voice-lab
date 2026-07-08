@@ -22,6 +22,7 @@ logger = logging.getLogger("uvicorn.error")
 class TestSessionCreate(BaseModel):
     agent_id: str
     user_id: str = "local-user"
+    evaluate_mode: bool = False
 
 
 class TestSessionRead(BaseModel):
@@ -38,7 +39,11 @@ async def create_test_session(payload: TestSessionCreate, session: SessionDep) -
         raise HTTPException(status_code=404, detail="Agent not found")
 
     adk_session_id = f"test-{uuid4()}"
-    run = await RunRepository(session).create(agent_id=agent.id, adk_session_id=adk_session_id)
+    run = await RunRepository(session).create(
+        agent_id=agent.id,
+        adk_session_id=adk_session_id,
+        summary={"evaluate_mode": payload.evaluate_mode},
+    )
     logger.info(
         "test-call session created run_id=%s agent_id=%s agent_name=%s",
         run.id,
@@ -49,7 +54,7 @@ async def create_test_session(payload: TestSessionCreate, session: SessionDep) -
     return TestSessionRead(
         run_id=run.id,
         adk_session_id=adk_session_id,
-        websocket_url=f"/api/test-call/ws/{run.id}",
+        websocket_url=f"/api/test-call/stream/ws/{run.id}",
         first_message=config.first_message,
     )
 
@@ -140,6 +145,7 @@ async def test_call_stream_socket(websocket: WebSocket, run_id: str, session: Se
             run_id=run_id,
             session_id=run.adk_session_id,
             record_trace=record_trace,
+            evaluate_mode=bool((run.summary or {}).get("evaluate_mode", False)),
             sample_rate=48000,
         )
     except WebSocketDisconnect:

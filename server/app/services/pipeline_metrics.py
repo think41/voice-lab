@@ -5,6 +5,12 @@ emits `LLMUsageMetricsData` / `TTSUsageMetricsData` through `MetricsFrame`.
 STT services don't emit usage frames, so we account for audio seconds by
 summing `InputAudioRawFrame` bytes fed into the pipeline.
 
+Two processors coordinate through a shared `SttUsageAccumulator`.
+
+TODO(Phase 1 eval): `usage.stt` remains the legacy run-summary source while the
+turn-based `metrics.jsonl` path is being verified. Remove this STT byte-counter
+path only after the new evaluation workflow has been cross-checked on real runs.
+
 Two processors coordinate through a shared `SttUsageAccumulator`:
   - `AudioInputCounter` sits between transport.input and STT, counting bytes.
   - `MetricsSink` sits at the tail, consuming MetricsFrames and flushing the

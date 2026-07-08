@@ -39,8 +39,14 @@ class RunRepository:
         )
         return result.scalar_one_or_none()
 
-    async def create(self, agent_id: str, adk_session_id: str) -> RunRecord:
-        record = RunRecord(agent_id=agent_id, adk_session_id=adk_session_id)
+    async def create(
+        self, agent_id: str, adk_session_id: str, summary: dict | None = None
+    ) -> RunRecord:
+        record = RunRecord(
+            agent_id=agent_id,
+            adk_session_id=adk_session_id,
+            summary=summary or {},
+        )
         self.session.add(record)
         await self.session.commit()
         await self.session.refresh(record)

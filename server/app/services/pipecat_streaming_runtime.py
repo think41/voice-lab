@@ -21,6 +21,7 @@ from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.serializers.base_serializer import FrameSerializer
 from pipecat.services.settings import LLMSettings
 from pipecat.services.deepgram.stt import DeepgramSTTService
@@ -45,6 +46,7 @@ from app.services.pipeline_metrics import (
     MetricsSink,
     SttUsageAccumulator,
 )
+from app.services.stt_evaluation_service import SttEvaluationSession
 
 logger = logging.getLogger("uvicorn.error")
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
@@ -441,6 +443,7 @@ class PipecatStreamingRuntime:
         run_id: str,
         session_id: str,
         record_trace: TraceRecorder,
+        evaluate_mode: bool = False,
         user_id: str = "local-user",
         sample_rate: int = 48000,
     ) -> None:
@@ -513,6 +516,29 @@ class PipecatStreamingRuntime:
         user_trace_bridge = UserTranscriptBridge(record_trace, send_event)
         assistant_trace_bridge = AssistantTraceBridge(record_trace, send_event, helper)
         playback_bridge = PlaybackTraceBridge(record_trace, send_event)
+        stt_evaluation = SttEvaluationSession(
+            settings=settings,
+            session_id=session_id,
+            run_id=run_id,
+            evaluate_mode=evaluate_mode and settings.enable_stt_evaluation,
+            record_trace=record_trace,
+        )
+        audio_buffer = AudioBufferProcessor(
+            sample_rate=sample_rate,
+            num_channels=1,
+            enable_turn_audio=True,
+        )
+
+        @audio_buffer.event_handler("on_user_turn_audio_data")
+        async def on_user_turn_audio_data(
+            _processor, audio: bytes, turn_sample_rate: int, num_channels: int
+        ) -> None:
+            await stt_evaluation.handle_user_turn_audio(
+                bytes(audio),
+                turn_sample_rate,
+                num_channels,
+            )
+
         stt_accumulator = SttUsageAccumulator()
         audio_input_counter = AudioInputCounter(stt_accumulator)
         metrics_sink = MetricsSink(
@@ -535,6 +561,7 @@ class PipecatStreamingRuntime:
                 llm,
                 assistant_trace_bridge,
                 tts,
+                audio_buffer,
                 transport.output(),
                 playback_bridge,
                 context.assistant(),
@@ -568,6 +595,7 @@ class PipecatStreamingRuntime:
                 "stt_model": config.stt_model,
                 "tts_provider": config.tts_provider,
                 "tts_voice": config.tts_voice,
+                "evaluate_mode": evaluate_mode and settings.enable_stt_evaluation,
             },
         )
         logger.info("pipecat streaming test-call started run_id=%s", run_id)
@@ -589,5 +617,9 @@ class PipecatStreamingRuntime:
                 VqlLLMFullResponseEndFrame(turn_id=turn_id, invocation_id=invocation_id)
             )
 
-        await runner.run(task)
+        await audio_buffer.start_recording()
+        try:
+            await runner.run(task)
+        finally:
+            await stt_evaluation.finalize()
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)

@@ -43,12 +43,13 @@ export async function listRuns(signal?: AbortSignal): Promise<RunRecord[]> {
 
 export async function createTestSession(
   agentId: string,
+  evaluateMode = false,
   signal?: AbortSignal,
 ): Promise<TestSession> {
   return request<TestSession>('/api/test-call/session', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ agent_id: agentId }),
+    body: JSON.stringify({ agent_id: agentId, evaluate_mode: evaluateMode }),
     signal,
   });
 }
