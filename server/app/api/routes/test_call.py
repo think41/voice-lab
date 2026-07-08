@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Annotated, Any
 from uuid import uuid4
@@ -12,14 +11,12 @@ from app.core.db import get_db_session
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.run_repository import RunRepository
 from app.schemas.agent import AgentConfig
-from app.services.deepgram_usage import schedule_reconciliation
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 from app.services.pipecat_streaming_runtime import PipecatStreamingRuntime
 
 router = APIRouter(prefix="/test-call", tags=["test-call"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 logger = logging.getLogger("uvicorn.error")
-_background_tasks: set[asyncio.Task[None]] = set()
 
 
 class TestSessionCreate(BaseModel):
@@ -156,7 +153,3 @@ async def test_call_stream_socket(websocket: WebSocket, run_id: str, session: Se
             pass
     finally:
         logger.info("streaming test-call websocket closed run_id=%s", run_id)
-        task = asyncio.create_task(schedule_reconciliation(run_id))
-        _background_tasks.add(task)
-        task.add_done_callback(_background_tasks.discard)
-

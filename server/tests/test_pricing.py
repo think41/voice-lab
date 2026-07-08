@@ -81,7 +81,7 @@ def test_session_totals_sums_across_events() -> None:
     assert totals["tts"]["source"] == "runtime"
 
 
-def test_session_totals_prefers_provider_usage_for_deepgram() -> None:
+def test_session_totals_ignores_legacy_provider_usage_reconciliation_events() -> None:
     events = [
         SimpleNamespace(
             event_type="usage.llm",
@@ -124,9 +124,9 @@ def test_session_totals_prefers_provider_usage_for_deepgram() -> None:
 
     totals = session_totals(events)
 
-    assert totals["stt"]["audio_seconds"] == 31.5
-    assert totals["stt"]["cost_usd"] == 0.123
-    assert totals["stt"]["source"] == "provider"
-    assert totals["tts"]["characters"] == 777
-    assert totals["tts"]["cost_usd"] == 0.456
-    assert totals["tts"]["source"] == "provider"
+    assert totals["stt"]["audio_seconds"] == 30.0
+    assert totals["stt"]["cost_usd"] == 0.00215
+    assert totals["stt"]["source"] == "runtime"
+    assert totals["tts"]["characters"] == 500
+    assert totals["tts"]["cost_usd"] == 0.015
+    assert totals["tts"]["source"] == "runtime"

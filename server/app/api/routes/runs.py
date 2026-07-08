@@ -74,26 +74,6 @@ def _provider_summary(trace_events: list[Any]) -> RunProviderSummary:
             tts.model = str(payload.get("model") or tts.model)
         elif event.event_type == "usage.stt":
             stt.model = str(payload.get("model") or stt.model)
-        elif event.event_type == "provider.usage" and payload.get("provider") == "deepgram":
-            kind = str(payload.get("kind") or "")
-            target = stt if kind == "stt" else tts if kind == "tts" else None
-            if target is None:
-                continue
-            target.provider_cost_usd = _float_or_none(payload.get("usd"))
-            target.method = _string_or_none(payload.get("method"))
-            target.tier = _string_or_none(payload.get("tier"))
-            target.deployment = _string_or_none(payload.get("deployment"))
-            target.provider_models = [
-                str(model_id)
-                for model_id in (payload.get("models") or [])
-                if isinstance(model_id, str) and model_id.strip()
-            ]
-            target.features = [
-                str(feature)
-                for feature in (payload.get("features") or [])
-                if isinstance(feature, str) and feature.strip()
-            ]
-
     if not stt.provider_lookup_available:
         stt.unavailable_reason = _provider_unavailable_reason(component="stt", provider=stt.provider, transport=stt.transport)
     if not tts.provider_lookup_available:
@@ -116,15 +96,6 @@ def _string_or_none(value: Any) -> str | None:
     if isinstance(value, str) and value.strip():
         return value
     return None
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
 
 
 def _session_started_payload(trace_events: list[Any]) -> dict[str, Any]:

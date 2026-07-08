@@ -16,8 +16,6 @@ class Settings(BaseSettings):
     stt_api_key: str | None = None
     tts_provider: str = "deepgram"
     tts_api_key: str | None = None
-    deepgram_management_api_key: str | None = None
-    deepgram_project_id: str | None = None
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
 
     @property

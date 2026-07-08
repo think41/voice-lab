@@ -1,9 +1,4 @@
-"""Rate table and cost computation for run usage summaries.
-
-When authoritative provider usage is unavailable, cost is derived at read time
-as `usage x rate`. When a reconciled `provider.usage` trace exists, that
-provider-reported cost wins for the matching component.
-"""
+"""Rate table and cost computation for run usage summaries."""
 
 from decimal import Decimal
 from typing import Any
@@ -94,11 +89,6 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
     local_stt_seconds = Decimal("0")
     local_tts_chars = 0
     llm_cost = local_stt_cost = local_tts_cost = Decimal("0")
-    provider_stt_seconds = Decimal("0")
-    provider_tts_chars = 0
-    provider_stt_cost = provider_tts_cost = Decimal("0")
-    has_provider_stt = False
-    has_provider_tts = False
     llm_latencies_ms: list[float] = []
     tts_latencies_ms: list[float] = []
 
@@ -120,20 +110,6 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
             payload = event.payload or {}
             local_tts_chars += int(payload.get("characters") or 0)
             local_tts_cost += _tts_cost(payload)
-        elif event.event_type == "provider.usage":
-            payload = event.payload or {}
-            if payload.get("provider") != "deepgram":
-                continue
-            kind = str(payload.get("kind") or "")
-            usd = Decimal(str(payload.get("usd") or 0))
-            if kind == "stt":
-                has_provider_stt = True
-                provider_stt_cost += usd
-                provider_stt_seconds += Decimal(str(payload.get("duration_s") or 0))
-            elif kind == "tts":
-                has_provider_tts = True
-                provider_tts_cost += usd
-                provider_tts_chars += int(payload.get("characters") or 0)
         elif event.event_type == "latency.ttfb":
             payload = event.payload or {}
             processor = str(payload.get("processor") or "").lower()
@@ -146,10 +122,10 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
             elif "llm" in processor or "adk" in processor:
                 llm_latencies_ms.append(ms)
 
-    stt_seconds = provider_stt_seconds if has_provider_stt else local_stt_seconds
-    tts_chars = provider_tts_chars if has_provider_tts else local_tts_chars
-    stt_cost = provider_stt_cost if has_provider_stt else local_stt_cost
-    tts_cost = provider_tts_cost if has_provider_tts else local_tts_cost
+    stt_seconds = local_stt_seconds
+    tts_chars = local_tts_chars
+    stt_cost = local_stt_cost
+    tts_cost = local_tts_cost
     total_cost = llm_cost + stt_cost + tts_cost
     return {
         "llm": {
@@ -163,13 +139,13 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
         "stt": {
             "audio_seconds": _q(stt_seconds, "0.001"),
             "cost_usd": _q(stt_cost),
-            "source": "provider" if has_provider_stt else "runtime",
+            "source": "runtime",
         },
         "tts": {
             "characters": tts_chars,
             "cost_usd": _q(tts_cost),
             "avg_latency_ms": _avg(tts_latencies_ms),
-            "source": "provider" if has_provider_tts else "runtime",
+            "source": "runtime",
         },
         "total_cost_usd": _q(total_cost),
     }
