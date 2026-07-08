@@ -21,7 +21,7 @@ class SavedTurnAudio:
 
 class SttEvaluationStore:
     def __init__(self, recordings_dir: str) -> None:
-        self._recordings_root = self._resolve_recordings_root(recordings_dir)
+        self._recordings_root = resolve_recordings_root(recordings_dir)
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def save_user_turn_audio(
@@ -86,10 +86,11 @@ class SttEvaluationStore:
         with path.open("a", encoding="utf-8") as metrics_file:
             metrics_file.write(line)
 
-    @staticmethod
-    def _resolve_recordings_root(recordings_dir: str) -> Path:
-        path = Path(recordings_dir)
-        if path.is_absolute():
-            return path
-        project_root = Path(__file__).resolve().parents[3]
-        return project_root / path
+
+
+def resolve_recordings_root(recordings_dir: str) -> Path:
+    path = Path(recordings_dir)
+    if path.is_absolute():
+        return path
+    project_root = Path(__file__).resolve().parents[3]
+    return project_root / path

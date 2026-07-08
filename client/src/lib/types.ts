@@ -1,4 +1,4 @@
-export type Provider = 'deepgram' | 'elevenlabs';
+export type Provider = 'deepgram' | 'elevenlabs' | 'sarvam';
 
 export interface ToolConfig {
   name: string;
@@ -101,4 +101,26 @@ export interface TextTurn {
   run_id: string;
   user_text: string;
   assistant_text: string;
+}
+
+export interface AudioProviderMetrics {
+  call_count: number;
+  success_count: number;
+  error_count: number;
+  latency_avg_ms: number;
+  latency_median_ms: number;
+  latency_p95_ms: number;
+}
+
+export interface AudioEvaluationRecord {
+  session_id: string;
+  run_id: string;
+  adk_session_id: string;
+  created_at: string;
+  turn_count: number;
+  session_stt_duration_sec: number;
+  session_model_costs_usd: Record<string, Record<string, number>>;
+  provider_session_metrics: Record<string, AudioProviderMetrics>;
+  file_paths: string[];
+  evaluate_mode: boolean;
 }

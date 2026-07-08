@@ -10,12 +10,15 @@ import { defaultAgentConfig } from './data/defaults';
 import { normalizeSpeechConfig } from './data/providerOptions';
 import { createAgent, isAbortError, listAgents, listRuns, updateAgent } from './lib/api';
 import type { AgentConfig, AgentRecord, RunRecord } from './lib/types';
+import type { AudioEvaluationRecord } from './lib/types';
 import { BuilderView } from './views/BuilderView';
+import { AudioView } from './views/AudioView';
 import { ReportsView } from './views/ReportsView';
 import { RunsView } from './views/RunsView';
 import { SettingsView } from './views/SettingsView';
+import { listAudioEvaluations } from './lib/api';
 
-type View = 'builder' | 'runs' | 'reports' | 'settings';
+type View = 'builder' | 'runs' | 'audio' | 'reports' | 'settings';
 const supportedModels = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']);
 
 function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
@@ -31,6 +34,7 @@ export default function App() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [draftConfig, setDraftConfig] = useState<AgentConfig>(defaultAgentConfig);
   const [runs, setRuns] = useState<RunRecord[]>([]);
+  const [audioEvaluations, setAudioEvaluations] = useState<AudioEvaluationRecord[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [deployOpen, setDeployOpen] = useState(false);
   const [testCallOpen, setTestCallOpen] = useState(false);
@@ -51,6 +55,16 @@ export default function App() {
   useEffect(() => {
     if (selectedAgent) setDraftConfig(normalizeVoiceConfig(selectedAgent.config));
   }, [selectedAgent]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!selectedAgentId) {
+      setAudioEvaluations([]);
+      return () => controller.abort();
+    }
+    void refreshAudioEvaluations(selectedAgentId, controller.signal);
+    return () => controller.abort();
+  }, [selectedAgentId]);
 
   useEffect(() => {
     setTestCallOpen(false);
@@ -78,6 +92,15 @@ export default function App() {
     } catch (error) {
       if (isAbortError(error)) return;
       setRuns([]);
+    }
+  };
+
+  const refreshAudioEvaluations = async (agentId: string, signal?: AbortSignal) => {
+    try {
+      setAudioEvaluations(await listAudioEvaluations(agentId, signal));
+    } catch (error) {
+      if (isAbortError(error)) return;
+      setAudioEvaluations([]);
     }
   };
 
@@ -116,6 +139,7 @@ export default function App() {
         />
         {view === 'builder' ? <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} /> : null}
         {view === 'runs' ? <RunsView runs={agentRuns} agent={selectedAgent} /> : null}
+        {view === 'audio' ? <AudioView records={audioEvaluations} agent={selectedAgent} /> : null}
         {view === 'reports' ? <ReportsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'settings' ? <SettingsView /> : null}
       </Workspace>
@@ -123,7 +147,10 @@ export default function App() {
         agentId={selectedAgentId}
         open={testCallOpen}
         onClose={() => setTestCallOpen(false)}
-        onSessionUpdated={() => void refreshRuns()}
+        onSessionUpdated={() => {
+          void refreshRuns();
+          if (selectedAgentId) void refreshAudioEvaluations(selectedAgentId);
+        }}
       />
       <Modal open={deployOpen} title="Deploy VoiceLab agent" subtitle="Deployment execution is intentionally outside the first implementation pass." onClose={() => setDeployOpen(false)} />
       <Toast message={toast} />

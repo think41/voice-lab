@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentRecord, RunRecord, TestSession, TextTurn } from './types';
+import type { AgentConfig, AgentRecord, AudioEvaluationRecord, RunRecord, TestSession, TextTurn } from './types';
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -39,6 +39,13 @@ export async function updateAgent(
 
 export async function listRuns(signal?: AbortSignal): Promise<RunRecord[]> {
   return request<RunRecord[]>('/api/runs', { signal });
+}
+
+export async function listAudioEvaluations(
+  agentId: string,
+  signal?: AbortSignal,
+): Promise<AudioEvaluationRecord[]> {
+  return request<AudioEvaluationRecord[]>(`/api/audio-evaluations/agent/${agentId}`, { signal });
 }
 
 export async function createTestSession(

@@ -33,6 +33,14 @@ class RunRepository:
         )
         return list(result.scalars())
 
+    async def list_by_agent(self, agent_id: str) -> list[RunRecord]:
+        result = await self.session.execute(
+            select(RunRecord)
+            .where(RunRecord.agent_id == agent_id)
+            .order_by(RunRecord.created_at.desc())
+        )
+        return list(result.scalars())
+
     async def get(self, run_id: str) -> RunRecord | None:
         result = await self.session.execute(
             select(RunRecord).options(selectinload(RunRecord.agent)).where(RunRecord.id == run_id)
