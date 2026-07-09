@@ -9,6 +9,7 @@ __pycache__/
 .mypy_cache/
 .venv/
 recordings/
+STT_EVALUATION_LAYER_PHASE1_TECH_PLAN.md
 
 node_modules/
 dist/
