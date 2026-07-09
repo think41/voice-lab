@@ -119,9 +119,9 @@ export function AudioView({ agent, records }: AudioViewProps) {
 
             <div className="mb-5 grid grid-cols-4 gap-4">
               <MetricCard label="Turns" value={String(selectedRecord.turn_count)} sub="captured user turns" />
-              <MetricCard label="Duration" value={formatDuration(selectedRecord.session_stt_duration_sec)} sub="session STT duration" />
-              <MetricCard label="Latency median" value={formatLatency(providerMetrics?.latency_median_ms ?? 0)} sub={`${titleCase(latencyProvider)} p50`} />
-              <MetricCard label="Latency p95" value={formatLatency(providerMetrics?.latency_p95_ms ?? 0)} sub={`${titleCase(latencyProvider)} p95`} />
+              <MetricCard label="STT Duration" value={formatDuration(selectedRecord.session_stt_duration_sec)} sub="session STT duration" />
+              <MetricCard label="STT Latency median" value={formatLatency(providerMetrics?.latency_median_ms ?? 0)} sub={`${titleCase(latencyProvider)} p50`} />
+              <MetricCard label="STT Latency p95" value={formatLatency(providerMetrics?.latency_p95_ms ?? 0)} sub={`${titleCase(latencyProvider)} p95`} />
             </div>
 
             <div className="mb-5 rounded-2xl border border-line bg-white p-5 shadow-sm">
@@ -153,23 +153,37 @@ export function AudioView({ agent, records }: AudioViewProps) {
 
             <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
               <div className="mb-4">
-                <h3 className="text-sm font-semibold text-text">Cost across all provider models</h3>
+                <h3 className="text-sm font-semibold text-text">Cost comparision across models</h3>
                 <p className="mt-1 text-xs text-faint">Computed from this audio session’s total user-turn duration. No extra provider calls required.</p>
               </div>
               <div className="grid gap-4 md:grid-cols-3">
-                {Object.entries(selectedRecord.session_model_costs_usd).map(([provider, models]) => (
+                {Object.entries(selectedRecord.session_model_costs_usd).map(([provider, models]) => {
+                  const rankedModels = Object.entries(models).sort((a, b) => a[1] - b[1]);
+                  const lowestModel = rankedModels[0]?.[0] ?? null;
+                  const highestModel = rankedModels[rankedModels.length - 1]?.[0] ?? null;
+                  return (
                   <div key={provider} className="rounded-xl border border-line bg-off p-4">
-                    <div className="mb-3 text-sm font-semibold text-text">{titleCase(provider)}</div>
+                    <div className="mb-3 text-sm font-semibold text-text">{titleCase(provider)} STT</div>
                     <div className="space-y-2 text-xs">
                       {Object.entries(models).map(([model, cost]) => (
                         <div key={model} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
-                          <span className="font-medium text-muted">{model}</span>
-                          <span className="font-mono text-text">${cost.toFixed(6)}</span>
+                          <div className="min-w-0">
+                            <div className="font-medium text-muted">{model}</div>
+                            <div className="mt-1 flex gap-1">
+                              {model === highestModel && rankedModels.length > 1 ? (
+                                <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Highest</span>
+                              ) : null}
+                              {model === lowestModel && rankedModels.length > 1 ? (
+                                <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lowest</span>
+                              ) : null}
+                            </div>
+                          </div>
+                          <span className="font-mono text-text">~${cost.toFixed(6)}</span>
                         </div>
                       ))}
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           </>
@@ -204,11 +218,11 @@ function formatDate(value: string) {
 }
 
 function formatDuration(seconds: number) {
-  return `${seconds.toFixed(2)}s`;
+  return `~${seconds.toFixed(2)}s`;
 }
 
 function formatLatency(value: number) {
-  return `${value.toFixed(1)} ms`;
+  return `~${value.toFixed(1)} ms`;
 }
 
 function titleCase(value: string) {
