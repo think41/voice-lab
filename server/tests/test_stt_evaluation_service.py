@@ -32,8 +32,8 @@ class FakeSttEvaluationSession(SttEvaluationSession):
 def _settings(tmp_path):
     return SimpleNamespace(
         stt_evaluation_recordings_dir=str(tmp_path),
-        stt_evaluation_deepgram_model="nova-2",
-        stt_evaluation_elevenlabs_model="scribe_v1",
+        stt_evaluation_deepgram_model="nova-3-monolingual",
+        stt_evaluation_elevenlabs_model="scribe_v2",
         stt_evaluation_sarvam_model="saarika:v2.5",
         stt_evaluation_sarvam_url="https://api.sarvam.ai/speech-to-text",
         deepgram_api_key=None,
@@ -79,8 +79,8 @@ async def test_evaluation_session_runs_all_three_providers_when_enabled(tmp_path
     await session.finalize()
 
     assert session.provider_calls == [
-        ("deepgram", "nova-2", "T1"),
-        ("elevenlabs", "scribe_v1", "T1"),
+        ("deepgram", "nova-3-monolingual", "T1"),
+        ("elevenlabs", "scribe_v2", "T1"),
         ("sarvam", "saarika:v2.5", "T1"),
     ]
     metrics = _read_metrics(tmp_path / "session-2" / "metrics.jsonl")

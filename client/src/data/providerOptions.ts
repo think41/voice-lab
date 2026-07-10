@@ -30,13 +30,19 @@ export const deepgramVoiceOptions: Option[] = [
 ];
 
 const sttModelOptionsByProvider: Record<Provider, Option[]> = {
-  deepgram: [{ value: 'nova-2', label: 'Nova-2' }],
-  elevenlabs: [{ value: 'scribe_v2_realtime', label: 'Scribe v2 Realtime' }],
+  deepgram: [
+    { value: 'nova-3-monolingual', label: 'Nova-3 Monolingual' },
+    { value: 'nova-3-multilingual', label: 'Nova-3 Multilingual' },
+  ],
+  elevenlabs: [
+    { value: 'scribe_v2', label: 'Scribe v2' },
+    { value: 'scribe_v2_realtime', label: 'Scribe v2 Realtime' },
+  ],
 };
 
 const defaultSttModelByProvider: Record<Provider, string> = {
-  deepgram: 'nova-2',
-  elevenlabs: 'scribe_v2_realtime',
+  deepgram: 'nova-3-monolingual',
+  elevenlabs: 'scribe_v2',
 };
 
 const defaultTtsVoiceByProvider: Record<Provider, string> = {

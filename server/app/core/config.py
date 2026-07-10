@@ -21,9 +21,9 @@ class Settings(BaseSettings):
     deepgram_project_id: str | None = None
     enable_stt_evaluation: bool = False
     stt_evaluation_recordings_dir: str = "recordings"
-    stt_evaluation_deepgram_model: str = "nova-2"
-    stt_evaluation_elevenlabs_model: str = "scribe_v1"
-    stt_evaluation_sarvam_model: str = "saarika:v2"
+    stt_evaluation_deepgram_model: str = "nova-3-monolingual"
+    stt_evaluation_elevenlabs_model: str = "scribe_v2"
+    stt_evaluation_sarvam_model: str = "saarika:v2.5"
     stt_evaluation_sarvam_url: str = "https://api.sarvam.ai/speech-to-text"
     cors_origins_raw: str = Field(default="http://localhost:5173", alias="CORS_ORIGINS")
 

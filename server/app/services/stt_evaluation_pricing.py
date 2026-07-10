@@ -6,21 +6,19 @@ RATE_PER_MINUTE_USD: dict[str, dict[str, Decimal]] = {
     "deepgram": {
         "nova-3-monolingual": Decimal("0.0048"),
         "nova-3-multilingual": Decimal("0.0058"),
-        "nova-2": Decimal("0.0043"),
     },
     "elevenlabs": {
-        "scribe-v1": Decimal("0.0055"),
+        "scribe-v2": Decimal("0.00367"),
         "scribe-v2-realtime": Decimal("0.0065"),
     },
     "sarvam": {
-        "saarika-v1": Decimal("0.0055"),
-        "saarika-v2": Decimal("0.0060"),
+        "saarika": Decimal("0.0060"),
     },
 }
 
 PRODUCTION_MODEL_BY_PROVIDER = {
-    "deepgram": "nova-2",
-    "elevenlabs": "scribe_v1",
+    "deepgram": "nova-3-monolingual",
+    "elevenlabs": "scribe_v2",
     "sarvam": "saarika:v2",
 }
 
@@ -28,21 +26,22 @@ PRICING_MODEL_ALIASES = {
     "deepgram": {
         "nova-3-monolingual": "nova-3-monolingual",
         "nova-3-multilingual": "nova-3-multilingual",
-        "nova-2": "nova-2",
     },
     "elevenlabs": {
-        "scribe_v1": "scribe-v1",
-        "scribe_v1_experimental": "scribe-v1",
-        "scribe_v2": "scribe-v2-realtime",
-        "scribe-v1": "scribe-v1",
+        "scribe_v1": "scribe-v2",
+        "scribe_v1_experimental": "scribe-v2",
+        "scribe_v2": "scribe-v2",
+        "scribe-v2": "scribe-v2",
         "scribe-v2-realtime": "scribe-v2-realtime",
     },
     "sarvam": {
-        "saarika:v1": "saarika-v1",
-        "saarika:v2": "saarika-v2",
-        "saarika:v2.5": "saarika-v2",
-        "saarika-v1": "saarika-v1",
-        "saarika-v2": "saarika-v2",
+        "saarika:v1": "saarika",
+        "saarika:v2": "saarika",
+        "saarika:v2.5": "saarika",
+        "saarika:flash": "saarika",
+        "saarika-v1": "saarika",
+        "saarika-v2": "saarika",
+        "saarika": "saarika",
     },
 }
 

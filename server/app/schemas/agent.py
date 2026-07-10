@@ -13,8 +13,8 @@ SUPPORTED_TTS_PROVIDERS = {"deepgram", "elevenlabs"}
 DEFAULT_STT_PROVIDER = "deepgram"
 DEFAULT_TTS_PROVIDER = "deepgram"
 DEFAULT_STT_MODEL_BY_PROVIDER = {
-    "deepgram": "nova-2",
-    "elevenlabs": "scribe_v2_realtime",
+    "deepgram": "nova-3-monolingual",
+    "elevenlabs": "scribe_v2",
 }
 DEFAULT_TTS_VOICE_BY_PROVIDER = {
     "deepgram": "aura-asteria-en",
@@ -25,8 +25,8 @@ DEFAULT_TTS_MODEL_BY_PROVIDER = {
     "elevenlabs": "eleven_turbo_v2_5",
 }
 SUPPORTED_STT_MODELS = {
-    "deepgram": {"nova-2"},
-    "elevenlabs": {"scribe_v2_realtime"},
+    "deepgram": {"nova-3-monolingual", "nova-3-multilingual"},
+    "elevenlabs": {"scribe_v2", "scribe_v2_realtime"},
 }
 SUPPORTED_DEEPGRAM_VOICES = {
     "aura-asteria-en",

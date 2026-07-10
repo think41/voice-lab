@@ -19,8 +19,8 @@ def test_compute_all_model_costs_reuses_same_duration() -> None:
     costs = compute_all_model_costs(60.0)
 
     assert costs["deepgram"]["nova-3-monolingual"] == 0.0048
-    assert costs["elevenlabs"]["scribe-v1"] == 0.0055
-    assert costs["sarvam"]["saarika-v2"] == 0.006
+    assert costs["elevenlabs"]["scribe-v2"] == 0.00367
+    assert costs["sarvam"]["saarika"] == 0.006
 
 
 def test_compute_model_cost_returns_zero_for_unknown_model() -> None:
