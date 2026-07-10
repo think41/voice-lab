@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db_session
 from app.repositories.run_repository import RunRepository
-from app.schemas.run import ProviderTraceRead, RunProviderSummary, RunRead, TraceEventRead, UsageSummary
-from app.services.pricing import session_totals
+from app.schemas.run import RunRead, TraceEventRead
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -35,76 +34,6 @@ def _scrub_heard(value: Any) -> Any:
         return [_scrub_heard(v) for v in value]
     return value
 
-
-def _provider_summary(trace_events: list[Any]) -> RunProviderSummary:
-    session_payload = _session_started_payload(trace_events)
-    default_transport = "websocket" if session_payload.get("mode") == "pipecat_streaming" else ""
-
-    stt = ProviderTraceRead(
-        provider=str(session_payload.get("stt_provider") or ""),
-        model=str(session_payload.get("stt_model") or ""),
-        transport=default_transport,
-    )
-    tts = ProviderTraceRead(
-        provider=str(session_payload.get("tts_provider") or ""),
-        model=str(session_payload.get("tts_model") or session_payload.get("tts_voice") or ""),
-        transport=default_transport,
-        voice=_string_or_none(session_payload.get("tts_voice")),
-    )
-
-    for event in trace_events:
-        payload = event.payload or {}
-        if event.event_type == "stt.provider_request":
-            stt.provider = str(payload.get("provider") or stt.provider)
-            stt.model = str(payload.get("model") or stt.model)
-            stt.transport = str(payload.get("transport") or stt.transport)
-            stt.voice = _string_or_none(payload.get("voice")) or stt.voice
-            stt.provider_request_id = _string_or_none(payload.get("provider_request_id"))
-            stt.provider_lookup_available = bool(stt.provider_request_id)
-            stt.unavailable_reason = None if stt.provider_lookup_available else stt.unavailable_reason
-        elif event.event_type == "tts.provider_request":
-            tts.provider = str(payload.get("provider") or tts.provider)
-            tts.model = str(payload.get("model") or tts.model)
-            tts.transport = str(payload.get("transport") or tts.transport)
-            tts.voice = _string_or_none(payload.get("voice")) or tts.voice
-            tts.provider_request_id = _string_or_none(payload.get("provider_request_id"))
-            tts.provider_lookup_available = bool(tts.provider_request_id)
-            tts.unavailable_reason = None if tts.provider_lookup_available else tts.unavailable_reason
-        elif event.event_type == "usage.tts":
-            tts.model = str(payload.get("model") or tts.model)
-        elif event.event_type == "usage.stt":
-            stt.model = str(payload.get("model") or stt.model)
-    if not stt.provider_lookup_available:
-        stt.unavailable_reason = _provider_unavailable_reason(component="stt", provider=stt.provider, transport=stt.transport)
-    if not tts.provider_lookup_available:
-        tts.unavailable_reason = _provider_unavailable_reason(component="tts", provider=tts.provider, transport=tts.transport)
-
-    return RunProviderSummary(stt=stt, tts=tts)
-
-
-def _provider_unavailable_reason(*, component: str, provider: str, transport: str) -> str | None:
-    provider = provider.lower()
-    transport = transport.lower()
-    if component == "tts" and provider == "elevenlabs" and transport == "websocket":
-        return "ElevenLabs TTS over websocket does not expose a provider request id"
-    if not provider:
-        return None
-    return "Provider request id unavailable for this provider path"
-
-
-def _string_or_none(value: Any) -> str | None:
-    if isinstance(value, str) and value.strip():
-        return value
-    return None
-
-
-def _session_started_payload(trace_events: list[Any]) -> dict[str, Any]:
-    for event in trace_events:
-        if event.event_type == "session.started" and isinstance(event.payload, dict):
-            return event.payload
-    return {}
-
-
 @router.get("", response_model=list[RunRead])
 async def list_runs(session: SessionDep) -> list[RunRead]:
     records = await RunRepository(session).list()
@@ -126,8 +55,6 @@ async def list_runs(session: SessionDep) -> list[RunRead]:
                 )
                 for event in record.trace_events
             ],
-            usage_summary=UsageSummary.model_validate(session_totals(record.trace_events)),
-            provider_summary=_provider_summary(record.trace_events),
         )
         for record in records
     ]
