@@ -1,4 +1,4 @@
-import type { AgentConfig, AgentRecord, RunRecord, TestSession, TextTurn } from './types';
+import type { AgentConfig, AgentRecord, AudioEvaluationRecord, RunRecord, TestSession, TextTurn } from './types';
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -41,14 +41,22 @@ export async function listRuns(signal?: AbortSignal): Promise<RunRecord[]> {
   return request<RunRecord[]>('/api/runs', { signal });
 }
 
+export async function listAudioEvaluations(
+  agentId: string,
+  signal?: AbortSignal,
+): Promise<AudioEvaluationRecord[]> {
+  return request<AudioEvaluationRecord[]>(`/api/audio-evaluations/agent/${agentId}`, { signal });
+}
+
 export async function createTestSession(
   agentId: string,
+  evaluateMode = false,
   signal?: AbortSignal,
 ): Promise<TestSession> {
   return request<TestSession>('/api/test-call/session', {
     method: 'POST',
     headers: jsonHeaders,
-    body: JSON.stringify({ agent_id: agentId }),
+    body: JSON.stringify({ agent_id: agentId, evaluate_mode: evaluateMode }),
     signal,
   });
 }

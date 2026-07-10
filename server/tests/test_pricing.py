@@ -77,3 +77,56 @@ def test_session_totals_sums_across_events() -> None:
     assert totals["tts"]["characters"] == 500
     assert totals["tts"]["cost_usd"] == 0.015
     assert totals["total_cost_usd"] == 0.019
+    assert totals["stt"]["source"] == "runtime"
+    assert totals["tts"]["source"] == "runtime"
+
+
+def test_session_totals_ignores_legacy_provider_usage_reconciliation_events() -> None:
+    events = [
+        SimpleNamespace(
+            event_type="usage.llm",
+            payload={
+                "prompt_tokens": 100,
+                "completion_tokens": 50,
+                "total_tokens": 150,
+                "model": "gemini-2.5-flash",
+            },
+        ),
+        SimpleNamespace(
+            event_type="usage.stt",
+            payload={"audio_seconds": 30, "provider": "deepgram", "model": "nova-2"},
+        ),
+        SimpleNamespace(
+            event_type="usage.tts",
+            payload={"characters": 500, "provider": "deepgram", "model": "aura-2"},
+        ),
+        SimpleNamespace(
+            event_type="provider.usage",
+            payload={
+                "provider": "deepgram",
+                "kind": "stt",
+                "request_id": "stt-1",
+                "usd": 0.123,
+                "duration_s": 31.5,
+            },
+        ),
+        SimpleNamespace(
+            event_type="provider.usage",
+            payload={
+                "provider": "deepgram",
+                "kind": "tts",
+                "request_id": "tts-1",
+                "usd": 0.456,
+                "characters": 777,
+            },
+        ),
+    ]
+
+    totals = session_totals(events)
+
+    assert totals["stt"]["audio_seconds"] == 30.0
+    assert totals["stt"]["cost_usd"] == 0.00215
+    assert totals["stt"]["source"] == "runtime"
+    assert totals["tts"]["characters"] == 500
+    assert totals["tts"]["cost_usd"] == 0.015
+    assert totals["tts"]["source"] == "runtime"

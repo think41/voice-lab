@@ -6,8 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db_session
 from app.repositories.run_repository import RunRepository
-from app.schemas.run import RunRead, TraceEventRead, UsageSummary
-from app.services.pricing import session_totals
+from app.schemas.run import RunRead, TraceEventRead
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -35,7 +34,6 @@ def _scrub_heard(value: Any) -> Any:
         return [_scrub_heard(v) for v in value]
     return value
 
-
 @router.get("", response_model=list[RunRead])
 async def list_runs(session: SessionDep) -> list[RunRead]:
     records = await RunRepository(session).list()
@@ -57,7 +55,6 @@ async def list_runs(session: SessionDep) -> list[RunRead]:
                 )
                 for event in record.trace_events
             ],
-            usage_summary=UsageSummary.model_validate(session_totals(record.trace_events)),
         )
         for record in records
     ]

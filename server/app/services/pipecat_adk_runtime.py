@@ -1,7 +1,6 @@
 import logging
 import os
 import re
-import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import uuid4
@@ -13,25 +12,16 @@ from google.adk.runners import Runner
 from google.genai import types
 
 from app.core.config import get_settings
-from app.schemas.agent import AgentConfig
+from app.schemas.agent import (
+    AgentConfig,
+    LEGACY_DEEPGRAM_VOICES,
+    SUPPORTED_DEEPGRAM_VOICES,
+)
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger("uvicorn.error")
-
-SUPPORTED_DEEPGRAM_VOICES = {
-    "aura-asteria-en",
-    "aura-luna-en",
-    "aura-stella-en",
-    "aura-athena-en",
-    "aura-2-thalia-en",
-    "aura-2-orion-en",
-    "aura-2-vesta-en",
-    "aura-2-zeus-en",
-}
-
-LEGACY_DEEPGRAM_VOICES = {"Rachel": "aura-asteria-en"}
 
 
 class PipecatAdkRuntime:
@@ -39,14 +29,10 @@ class PipecatAdkRuntime:
         settings = get_settings()
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required to run a voice test call")
-        if settings.stt_provider != "deepgram":
-            raise RuntimeError(f"Unsupported STT provider: {settings.stt_provider}")
-        if not settings.stt_api_key:
-            raise RuntimeError("STT_API_KEY is required to transcribe microphone audio")
-        if settings.tts_provider != "deepgram":
-            raise RuntimeError(f"Unsupported TTS provider: {settings.tts_provider}")
+        if not (settings.deepgram_api_key or settings.stt_api_key):
+            raise RuntimeError("A Deepgram API key is required to transcribe microphone audio")
         if not self._deepgram_tts_api_key():
-            raise RuntimeError("STT_API_KEY or TTS_API_KEY is required to speak agent responses")
+            raise RuntimeError("A Deepgram API key is required to speak agent responses")
         logger.info(
             "voice runtime validated gemini_key=%s stt_provider=%s stt_key=%s "
             "tts_provider=%s tts_key=%s",
@@ -74,9 +60,7 @@ class PipecatAdkRuntime:
         runner = Runner(app=app, session_service=session_service)
         message = types.Content(role="user", parts=[types.Part(text=user_text)])
         response_parts: list[str] = []
-        final_usage: Any | None = None
         logger.info("adk turn start session_id=%s transcript_chars=%d", session_id, len(user_text))
-        turn_started = time.monotonic()
         try:
             async for event in runner.run_async(
                 user_id=user_id,
@@ -87,10 +71,6 @@ class PipecatAdkRuntime:
                 event_text = self._event_text(event)
                 if event_text:
                     response_parts.append(event_text)
-                # Gemini repeats cumulative usage on every event; the last non-partial wins.
-                usage = getattr(event, "usage_metadata", None)
-                if usage and not getattr(event, "partial", False):
-                    final_usage = usage
                 if getattr(event, "error_message", None):
                     logger.error(
                         "adk event error session_id=%s error=%s", session_id, event.error_message
@@ -108,21 +88,6 @@ class PipecatAdkRuntime:
         response_text = self.clean_model_text("".join(response_parts)).strip()
         if not response_text:
             response_text = "I heard you, but I could not produce a response."
-        if record_trace is not None and final_usage is not None:
-            latency_ms = round((time.monotonic() - turn_started) * 1000.0, 1)
-            await record_trace(
-                "usage.llm",
-                {
-                    "prompt_tokens": final_usage.prompt_token_count or 0,
-                    "completion_tokens": final_usage.candidates_token_count or 0,
-                    "total_tokens": final_usage.total_token_count or 0,
-                    "cache_read_input_tokens": final_usage.cached_content_token_count or 0,
-                    "reasoning_tokens": getattr(final_usage, "thoughts_token_count", None) or 0,
-                    "model": config.model,
-                    "processor": "adk-text",
-                    "latency_ms": latency_ms,
-                },
-            )
         logger.info(
             "adk turn complete session_id=%s response_chars=%d", session_id, len(response_text)
         )
@@ -176,7 +141,7 @@ class PipecatAdkRuntime:
 
     def _deepgram_tts_api_key(self) -> str | None:
         settings = get_settings()
-        return settings.stt_api_key or settings.tts_api_key
+        return settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
 
     def _deepgram_voice_model(self, voice: str) -> str:
         if voice in LEGACY_DEEPGRAM_VOICES:

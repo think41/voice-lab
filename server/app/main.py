@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import agents, health, runs, test_call
+from app.api.routes import agents, audio_evaluations, health, runs, test_call
 from app.core.config import get_settings
 
 
@@ -19,6 +19,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(agents.router, prefix="/api")
+    app.include_router(audio_evaluations.router, prefix="/api")
     app.include_router(runs.router, prefix="/api")
     app.include_router(test_call.router, prefix="/api")
     return app

@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
 
 import { SessionsPane } from '../components/runs/SessionsPane';
-import { ToolsUsed } from '../components/runs/ToolsUsed';
 import { TraceTable } from '../components/runs/TraceTable';
 import type { AgentRecord, RunRecord } from '../lib/types';
 
 interface RunsViewProps {
-  runs: RunRecord[];
   agent: AgentRecord | null;
+  runs: RunRecord[];
 }
 
-export function RunsView({ runs, agent }: RunsViewProps) {
+export function RunsView({ agent, runs }: RunsViewProps) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,7 +34,7 @@ export function RunsView({ runs, agent }: RunsViewProps) {
     return (
       <EmptyPane
         title={`No conversations for ${agent.name}`}
-        body="Run a test call from the Builder view. Conversation transcripts will appear here."
+        body="Run a test call from the Builder view. Stored conversations will appear here by session id."
       />
     );
   }
@@ -51,11 +50,10 @@ export function RunsView({ runs, agent }: RunsViewProps) {
           {selectedRun ? (
             <>
               <span className="mx-1.5">/</span>
-              <span className="font-mono text-text">{selectedRun.id.slice(0, 8)}</span>
+              <span className="font-mono text-text">{selectedRun.adk_session_id}</span>
             </>
           ) : null}
         </div>
-        <ToolsUsed run={selectedRun} />
         <TraceTable run={selectedRun} />
       </section>
     </div>

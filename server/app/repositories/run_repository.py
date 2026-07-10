@@ -33,14 +33,28 @@ class RunRepository:
         )
         return list(result.scalars())
 
+    async def list_by_agent(self, agent_id: str) -> list[RunRecord]:
+        result = await self.session.execute(
+            select(RunRecord)
+            .where(RunRecord.agent_id == agent_id)
+            .order_by(RunRecord.created_at.desc())
+        )
+        return list(result.scalars())
+
     async def get(self, run_id: str) -> RunRecord | None:
         result = await self.session.execute(
             select(RunRecord).options(selectinload(RunRecord.agent)).where(RunRecord.id == run_id)
         )
         return result.scalar_one_or_none()
 
-    async def create(self, agent_id: str, adk_session_id: str) -> RunRecord:
-        record = RunRecord(agent_id=agent_id, adk_session_id=adk_session_id)
+    async def create(
+        self, agent_id: str, adk_session_id: str, summary: dict | None = None
+    ) -> RunRecord:
+        record = RunRecord(
+            agent_id=agent_id,
+            adk_session_id=adk_session_id,
+            summary=summary or {},
+        )
         self.session.add(record)
         await self.session.commit()
         await self.session.refresh(record)

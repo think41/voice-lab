@@ -1,8 +1,10 @@
 import type { RunRecord, TraceEvent } from '../../lib/types';
 
+const CONVERSATION_EVENT_TYPES = new Set(['transcript.final', 'agent.text']);
+
 export function TraceTable({ run }: { run: RunRecord | null }) {
   const events = run?.trace_events ?? [];
-  const conversationEvents = events.filter((event) => ['transcript.final', 'agent.text'].includes(event.event_type));
+  const conversationEvents = events.filter((event) => CONVERSATION_EVENT_TYPES.has(event.event_type));
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -27,15 +29,27 @@ export function TraceTable({ run }: { run: RunRecord | null }) {
           </thead>
           <tbody>
             {events.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-10 text-center text-xs text-faint">No trace events captured yet.</td></tr>
-            ) : events.map((event) => (
-              <tr key={event.id} className="border-b border-line text-[11px] text-muted hover:bg-off">
-                <td className="px-3 py-2 font-mono text-faint">{String(event.sequence).padStart(2, '0')}</td>
-                <td className="px-3 py-2"><span className="rounded bg-blue-50 px-2 py-0.5 font-mono text-[10px] text-primary">{event.event_type}</span></td>
-                <td className="px-3 py-2 font-mono">{formatPayload(event.payload)}</td>
-                <td className="px-3 py-2 font-mono text-faint">{new Date(event.created_at).toLocaleTimeString()}</td>
+              <tr>
+                <td colSpan={4} className="px-4 py-10 text-center text-xs text-faint">
+                  No trace events captured yet.
+                </td>
               </tr>
-            ))}
+            ) : (
+              events.map((event) => (
+                <tr key={event.id} className="border-b border-line text-[11px] text-muted hover:bg-off">
+                  <td className="px-3 py-2 font-mono text-faint">{String(event.sequence).padStart(2, '0')}</td>
+                  <td className="px-3 py-2">
+                    <span className="rounded bg-blue-50 px-2 py-0.5 font-mono text-[10px] text-primary">
+                      {event.event_type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono">{formatPayload(event.payload)}</td>
+                  <td className="px-3 py-2 font-mono text-faint">
+                    {new Date(event.created_at).toLocaleTimeString()}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -48,8 +62,14 @@ function ConversationBubble({ event }: { event: TraceEvent }) {
   const text = typeof event.payload.text === 'string' ? event.payload.text : '';
   return (
     <div className={`flex ${role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
-      <div className={`max-w-[74%] rounded-lg px-3 py-2 text-xs ${role === 'assistant' ? 'bg-off text-text' : 'bg-primary text-white'}`}>
-        <div className={`mb-1 text-[9px] uppercase ${role === 'assistant' ? 'text-faint' : 'text-white/70'}`}>{role}</div>
+      <div
+        className={`max-w-[74%] rounded-lg px-3 py-2 text-xs ${
+          role === 'assistant' ? 'bg-off text-text' : 'bg-primary text-white'
+        }`}
+      >
+        <div className={`mb-1 text-[9px] uppercase ${role === 'assistant' ? 'text-faint' : 'text-white/70'}`}>
+          {role}
+        </div>
         <p className="leading-5">{text}</p>
       </div>
     </div>

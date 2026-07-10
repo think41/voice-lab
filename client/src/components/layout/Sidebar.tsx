@@ -1,8 +1,8 @@
-import { Activity, Bot, Plus, Settings, Sliders, TrendingUp } from 'lucide-react';
+import { Activity, Bot, Headphones, Plus, Settings, Sliders } from 'lucide-react';
 
 import type { AgentRecord } from '../../lib/types';
 
-type View = 'builder' | 'runs' | 'reports' | 'settings';
+type View = 'builder' | 'runs' | 'audio' | 'settings';
 
 interface SidebarProps {
   agents: AgentRecord[];
@@ -16,7 +16,7 @@ interface SidebarProps {
 const subItems: Array<{ view: View; label: string; icon: typeof Sliders }> = [
   { view: 'builder', label: 'Builder', icon: Sliders },
   { view: 'runs', label: 'Conversations', icon: Activity },
-  { view: 'reports', label: 'Reports', icon: TrendingUp },
+  { view: 'audio', label: 'Audio', icon: Headphones },
 ];
 
 export function Sidebar({

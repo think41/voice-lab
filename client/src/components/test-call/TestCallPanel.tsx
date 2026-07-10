@@ -26,9 +26,20 @@ type RuntimeMessage = {
   sample_rate?: number;
 };
 
+type PanelSnapshot = {
+  mode: TestMode;
+  runId: string | null;
+  messages: ChatMessage[];
+  audioSrc: string | null;
+  textMessage: string;
+  evaluateMode: boolean;
+};
+
 export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: TestCallPanelProps) {
   const socketRef = useRef<WebSocket | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const agentSnapshotsRef = useRef<Record<string, PanelSnapshot>>({});
+  const previousAgentIdRef = useRef<string | null>(agentId);
   const [mode, setMode] = useState<TestMode>('voice');
   const [runId, setRunId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -37,30 +48,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const [error, setError] = useState<string | null>(null);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [textMessage, setTextMessage] = useState('');
-
-  const audio = useAudioIO({
-    onCapture: (chunk) => {
-      const socket = socketRef.current;
-      if (socket?.readyState === WebSocket.OPEN) socket.send(chunk);
-    },
-    onCaptureStarted: () => appendLog('microphone.ready'),
-    onError: (message) => setError(message),
-  });
-
-  useEffect(() => {
-    return () => {
-      if (socketRef.current?.readyState === WebSocket.OPEN) {
-        try { socketRef.current.send(JSON.stringify({ type: 'stop' })); } catch { /* ignore */ }
-      }
-      socketRef.current?.close();
-      socketRef.current = null;
-      audioRef.current?.pause();
-      audioRef.current = null;
-      // useAudioIO's own cleanup effect handles audio teardown.
-    };
-  }, []);
-
-  if (!open) return null;
+  const [evaluateMode, setEvaluateMode] = useState(false);
 
   const appendLog = (event: string) => {
     console.debug('[test-call]', event);
@@ -107,6 +95,97 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     appendLog(formatRuntimeEvent(event));
   };
 
+  const audio = useAudioIO({
+    onCapture: (chunk) => {
+      const socket = socketRef.current;
+      if (socket?.readyState === WebSocket.OPEN) socket.send(chunk);
+    },
+    onCaptureStarted: () => appendLog('microphone.ready'),
+    onError: (message) => setError(message),
+  });
+
+  const stopSession = () => {
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      socketRef.current.send(JSON.stringify({ type: 'stop' }));
+    }
+    socketRef.current?.close();
+    socketRef.current = null;
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setAudioSrc(null);
+    setActive(false);
+    onSessionUpdated();
+    void audio.cleanup();
+  };
+
+  useEffect(() => {
+    return () => {
+      if (socketRef.current?.readyState === WebSocket.OPEN) {
+        try {
+          socketRef.current.send(JSON.stringify({ type: 'stop' }));
+        } catch {
+          // ignore best-effort shutdown errors during unmount
+        }
+      }
+      socketRef.current?.close();
+      socketRef.current = null;
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (open || (!socketRef.current && !active)) return;
+    stopSession();
+  }, [open, active]);
+
+  useEffect(() => {
+    const previousAgentId = previousAgentIdRef.current;
+    if (previousAgentId === agentId) return;
+
+    if (previousAgentId) {
+      agentSnapshotsRef.current[previousAgentId] = {
+        mode,
+        runId,
+        messages,
+        audioSrc,
+        textMessage,
+        evaluateMode,
+      };
+    }
+
+    if (agentId) {
+      const snapshot = agentSnapshotsRef.current[agentId];
+      if (snapshot) {
+        setMode(snapshot.mode);
+        setRunId(snapshot.runId);
+        setMessages(snapshot.messages);
+        setAudioSrc(snapshot.audioSrc);
+        setTextMessage(snapshot.textMessage);
+        setEvaluateMode(snapshot.evaluateMode);
+      } else {
+        setMode('voice');
+        setRunId(null);
+        setMessages([]);
+        setAudioSrc(null);
+        setTextMessage('');
+        setEvaluateMode(false);
+      }
+    } else {
+      setMode('voice');
+      setRunId(null);
+      setMessages([]);
+      setAudioSrc(null);
+      setTextMessage('');
+      setEvaluateMode(false);
+    }
+
+    setActive(false);
+    setSending(false);
+    setError(null);
+    previousAgentIdRef.current = agentId;
+  }, [agentId, mode, runId, messages, audioSrc, textMessage, evaluateMode]);
+
   const startVoice = async () => {
     if (!agentId) {
       setError('Save an agent before starting a test call.');
@@ -118,9 +197,9 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setRunId(null);
     try {
       const audioContext = await audio.acquireMic();
-      const session = await createTestSession(agentId);
+      const session = await createTestSession(agentId, evaluateMode);
       setRunId(session.run_id);
-      const socket = new WebSocket(websocketUrl(session.websocket_url.replace('/ws/', '/stream/ws/')));
+      const socket = new WebSocket(websocketUrl(session.websocket_url));
       socket.binaryType = 'arraybuffer';
       socketRef.current = socket;
       socket.onopen = () => {
@@ -171,13 +250,13 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       setError('Save an agent before starting a chat session.');
       return;
     }
-    stop();
+    stopSession();
     setMode('text');
     setError(null);
     setAudioSrc(null);
     setMessages([]);
     try {
-      const session = await createTestSession(agentId);
+      const session = await createTestSession(agentId, evaluateMode);
       setRunId(session.run_id);
       setActive(true);
       appendLog(`chat.open ${session.run_id}`);
@@ -209,23 +288,15 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   };
 
   const stop = () => {
-    if (socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'stop' }));
-    }
-    socketRef.current?.close();
-    socketRef.current = null;
-    audioRef.current?.pause();
-    audioRef.current = null;
-    setAudioSrc(null);
-    setActive(false);
-    onSessionUpdated();
-    void audio.cleanup();
+    stopSession();
   };
 
   const closePanel = () => {
-    stop();
+    stopSession();
     onClose();
   };
+
+  if (!open) return null;
 
   return (
     <div className="absolute right-4 top-[68px] z-40 w-[380px] rounded-xl border border-line bg-white shadow-panel">
@@ -241,6 +312,18 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
           <button className={`rounded-md px-2 py-1.5 ${mode === 'voice' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('voice')}>Voice</button>
           <button className={`rounded-md px-2 py-1.5 ${mode === 'text' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('text')}>Text</button>
         </div>
+        <label className="flex items-center justify-between rounded-lg border border-line bg-off px-3 py-2 text-xs">
+          <span>
+            <span className="block font-semibold text-text">Evaluate mode</span>
+            <span className="block text-faint">Capture turn audio and run STT evaluation providers.</span>
+          </span>
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={evaluateMode}
+            onChange={(event) => setEvaluateMode(event.target.checked)}
+          />
+        </label>
         {mode === 'voice' ? <AudioMeter active={active} /> : null}
         <TranscriptStream messages={messages} />
         {mode === 'text' ? (
