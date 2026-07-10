@@ -42,9 +42,7 @@ from app.schemas.agent import AgentConfig, DEFAULT_TTS_MODEL_BY_PROVIDER
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 from app.services.pipeline_metrics import (
-    AudioInputCounter,
     MetricsSink,
-    SttUsageAccumulator,
 )
 from app.services.stt_evaluation_service import SttEvaluationSession
 
@@ -539,22 +537,12 @@ class PipecatStreamingRuntime:
                 num_channels,
             )
 
-        stt_accumulator = SttUsageAccumulator()
-        audio_input_counter = AudioInputCounter(stt_accumulator)
         metrics_sink = MetricsSink(
             record_trace=record_trace,
-            stt_accumulator=stt_accumulator,
-            llm_model=config.model,
-            stt_provider=config.stt_provider,
-            stt_model=config.stt_model,
-            stt_sample_rate=sample_rate,
-            tts_provider=config.tts_provider,
-            tts_model=metrics_tts_model,
         )
         pipeline = Pipeline(
             [
                 transport.input(),
-                audio_input_counter,
                 stt,
                 user_trace_bridge,
                 context.user(),
@@ -574,7 +562,7 @@ class PipecatStreamingRuntime:
                 audio_in_sample_rate=sample_rate,
                 audio_out_sample_rate=24000,
                 enable_metrics=True,
-                enable_usage_metrics=True,
+                enable_usage_metrics=False,
             ),
         )
         runner = PipelineRunner(handle_sigint=False)
