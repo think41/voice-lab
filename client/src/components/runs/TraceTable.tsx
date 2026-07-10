@@ -1,29 +1,13 @@
-import type { ProviderTraceSummary, RunRecord, TraceEvent } from '../../lib/types';
+import type { RunRecord, TraceEvent } from '../../lib/types';
+
+const CONVERSATION_EVENT_TYPES = new Set(['transcript.final', 'agent.text']);
 
 export function TraceTable({ run }: { run: RunRecord | null }) {
   const events = run?.trace_events ?? [];
-  const conversationEvents = events.filter((event) => ['transcript.final', 'agent.text'].includes(event.event_type));
+  const conversationEvents = events.filter((event) => CONVERSATION_EVENT_TYPES.has(event.event_type));
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <section className="border-b border-line bg-off px-4 py-3">
-        <h2 className="text-[12px] font-semibold text-text">Provider Traceability</h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <ProviderCard
-            label="STT"
-            provider={run?.provider_summary.stt ?? null}
-            usageLine={run ? `${formatAudioSeconds(run.usage_summary.stt.audio_seconds)} audio` : null}
-            sourceLine={run ? `Usage source: ${run.usage_summary.stt.source}` : null}
-          />
-          <ProviderCard
-            label="TTS"
-            provider={run?.provider_summary.tts ?? null}
-            usageLine={run ? `${run.usage_summary.tts.characters} chars` : null}
-            sourceLine={run ? `Usage source: ${run.usage_summary.tts.source}` : null}
-          />
-          <UsageCard run={run} />
-        </div>
-      </section>
       <section className="border-b border-line bg-white px-4 py-3">
         <h2 className="text-[12px] font-semibold text-text">Conversation</h2>
         <div className="mt-3 max-h-64 space-y-2 overflow-auto pr-1">
@@ -45,113 +29,29 @@ export function TraceTable({ run }: { run: RunRecord | null }) {
           </thead>
           <tbody>
             {events.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-10 text-center text-xs text-faint">No trace events captured yet.</td></tr>
-            ) : events.map((event) => (
-              <tr key={event.id} className="border-b border-line text-[11px] text-muted hover:bg-off">
-                <td className="px-3 py-2 font-mono text-faint">{String(event.sequence).padStart(2, '0')}</td>
-                <td className="px-3 py-2"><span className="rounded bg-blue-50 px-2 py-0.5 font-mono text-[10px] text-primary">{event.event_type}</span></td>
-                <td className="px-3 py-2 font-mono">{formatPayload(event.payload)}</td>
-                <td className="px-3 py-2 font-mono text-faint">{new Date(event.created_at).toLocaleTimeString()}</td>
+              <tr>
+                <td colSpan={4} className="px-4 py-10 text-center text-xs text-faint">
+                  No trace events captured yet.
+                </td>
               </tr>
-            ))}
+            ) : (
+              events.map((event) => (
+                <tr key={event.id} className="border-b border-line text-[11px] text-muted hover:bg-off">
+                  <td className="px-3 py-2 font-mono text-faint">{String(event.sequence).padStart(2, '0')}</td>
+                  <td className="px-3 py-2">
+                    <span className="rounded bg-blue-50 px-2 py-0.5 font-mono text-[10px] text-primary">
+                      {event.event_type}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-mono">{formatPayload(event.payload)}</td>
+                  <td className="px-3 py-2 font-mono text-faint">
+                    {new Date(event.created_at).toLocaleTimeString()}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-}
-
-function ProviderCard({
-  label,
-  provider,
-  usageLine,
-  sourceLine,
-}: {
-  label: string;
-  provider: ProviderTraceSummary | null;
-  usageLine: string | null;
-  sourceLine: string | null;
-}) {
-  if (!provider) {
-    return <SummaryCard title={label} lines={['No provider data captured yet.']} tone="muted" />;
-  }
-
-  const title = [provider.provider || 'Unknown', provider.model || provider.voice || ''].filter(Boolean).join(' / ');
-  const lines = [
-    provider.transport ? `Transport: ${provider.transport}` : null,
-    provider.voice ? `Voice: ${provider.voice}` : null,
-    usageLine,
-    sourceLine,
-    provider.provider_cost_usd != null ? `Provider cost: ${formatUsd(provider.provider_cost_usd)}` : null,
-    provider.tier ? `Tier: ${provider.tier}` : null,
-    provider.method ? `Method: ${provider.method}` : null,
-    provider.deployment ? `Deployment: ${provider.deployment}` : null,
-    provider.features.length ? `Features: ${provider.features.join(', ')}` : null,
-    provider.provider_request_id ? `Request ID: ${provider.provider_request_id}` : null,
-    provider.provider_lookup_available
-      ? 'Provider lookup available'
-      : provider.unavailable_reason || 'Provider lookup unavailable',
-  ].filter(Boolean) as string[];
-
-  return (
-    <SummaryCard
-      title={label}
-      subtitle={title || 'No provider data'}
-      lines={lines}
-      tone={provider.provider_lookup_available ? 'positive' : 'muted'}
-    />
-  );
-}
-
-function UsageCard({ run }: { run: RunRecord | null }) {
-  if (!run) {
-    return <SummaryCard title="Usage" lines={['No usage captured yet.']} tone="muted" />;
-  }
-
-  const { llm, total_cost_usd } = run.usage_summary;
-  return (
-    <SummaryCard
-      title="Usage"
-      subtitle={llm.total_tokens ? `${llm.total_tokens} LLM tokens` : 'No LLM usage yet'}
-      lines={[
-        `LLM cost: ${formatUsd(llm.cost_usd)}`,
-        `Prompt: ${llm.prompt_tokens}`,
-        `Completion: ${llm.completion_tokens}`,
-        `LLM latency: ${formatLatency(llm.avg_latency_ms)}`,
-        `LLM source: ${llm.source}`,
-        `STT cost: ${formatUsd(run.usage_summary.stt.cost_usd)}`,
-        `TTS cost: ${formatUsd(run.usage_summary.tts.cost_usd)}`,
-        `Total cost: ${formatUsd(total_cost_usd)}`,
-        'Provider APIs currently do not supply Deepgram STT/TTS latency or Gemini token reconciliation here.',
-      ]}
-      tone="muted"
-    />
-  );
-}
-
-function SummaryCard({
-  title,
-  subtitle,
-  lines,
-  tone,
-}: {
-  title: string;
-  subtitle?: string;
-  lines: string[];
-  tone: 'positive' | 'muted';
-}) {
-  return (
-    <div
-      className={`rounded-lg border px-3 py-3 ${
-        tone === 'positive' ? 'border-emerald-200 bg-emerald-50/50' : 'border-line bg-white'
-      }`}
-    >
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-faint">{title}</div>
-      {subtitle ? <div className="mt-1 text-xs font-medium text-text">{subtitle}</div> : null}
-      <div className="mt-2 space-y-1 text-[11px] text-muted">
-        {lines.map((line) => (
-          <div key={line}>{line}</div>
-        ))}
       </div>
     </div>
   );
@@ -162,8 +62,14 @@ function ConversationBubble({ event }: { event: TraceEvent }) {
   const text = typeof event.payload.text === 'string' ? event.payload.text : '';
   return (
     <div className={`flex ${role === 'assistant' ? 'justify-start' : 'justify-end'}`}>
-      <div className={`max-w-[74%] rounded-lg px-3 py-2 text-xs ${role === 'assistant' ? 'bg-off text-text' : 'bg-primary text-white'}`}>
-        <div className={`mb-1 text-[9px] uppercase ${role === 'assistant' ? 'text-faint' : 'text-white/70'}`}>{role}</div>
+      <div
+        className={`max-w-[74%] rounded-lg px-3 py-2 text-xs ${
+          role === 'assistant' ? 'bg-off text-text' : 'bg-primary text-white'
+        }`}
+      >
+        <div className={`mb-1 text-[9px] uppercase ${role === 'assistant' ? 'text-faint' : 'text-white/70'}`}>
+          {role}
+        </div>
         <p className="leading-5">{text}</p>
       </div>
     </div>
@@ -174,18 +80,4 @@ function formatPayload(payload: Record<string, unknown>) {
   if (typeof payload.text === 'string') return payload.text;
   if (typeof payload.message === 'string') return payload.message;
   return JSON.stringify(payload);
-}
-
-function formatAudioSeconds(value: number) {
-  if (!value) return '0s';
-  return `${value.toFixed(2)}s`;
-}
-
-function formatLatency(value: number) {
-  if (!value) return '0 ms';
-  return `${Math.round(value)} ms`;
-}
-
-function formatUsd(value: number) {
-  return `$${value.toFixed(4)}`;
 }

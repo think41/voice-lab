@@ -1,24 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { TopBar } from './components/layout/TopBar';
 import { Sidebar } from './components/layout/Sidebar';
+import { TopBar } from './components/layout/TopBar';
 import { Workspace } from './components/layout/Workspace';
+import { TestCallPanel } from './components/test-call/TestCallPanel';
 import { Modal } from './components/ui/Modal';
 import { Toast } from './components/ui/Toast';
-import { TestCallPanel } from './components/test-call/TestCallPanel';
 import { defaultAgentConfig } from './data/defaults';
 import { normalizeSpeechConfig } from './data/providerOptions';
-import { createAgent, isAbortError, listAgents, listRuns, updateAgent } from './lib/api';
-import type { AgentConfig, AgentRecord, RunRecord } from './lib/types';
-import type { AudioEvaluationRecord } from './lib/types';
+import { createAgent, isAbortError, listAgents, listAudioEvaluations, listRuns, updateAgent } from './lib/api';
+import type { AgentConfig, AgentRecord, AudioEvaluationRecord, RunRecord } from './lib/types';
 import { BuilderView } from './views/BuilderView';
 import { AudioView } from './views/AudioView';
-import { ReportsView } from './views/ReportsView';
 import { RunsView } from './views/RunsView';
 import { SettingsView } from './views/SettingsView';
-import { listAudioEvaluations } from './lib/api';
 
-type View = 'builder' | 'runs' | 'audio' | 'reports' | 'settings';
+type View = 'builder' | 'runs' | 'audio' | 'settings';
+
 const supportedModels = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']);
 
 function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
@@ -39,7 +37,10 @@ export default function App() {
   const [deployOpen, setDeployOpen] = useState(false);
   const [testCallOpen, setTestCallOpen] = useState(false);
 
-  const selectedAgent = useMemo(() => agents.find((agent) => agent.id === selectedAgentId) ?? null, [agents, selectedAgentId]);
+  const selectedAgent = useMemo(
+    () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
+    [agents, selectedAgentId],
+  );
   const agentRuns = useMemo(
     () => (selectedAgentId ? runs.filter((run) => run.agent_id === selectedAgentId) : []),
     [runs, selectedAgentId],
@@ -58,13 +59,13 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    if (!selectedAgentId) {
+    if (!selectedAgentId || view !== 'audio') {
       setAudioEvaluations([]);
       return () => controller.abort();
     }
     void refreshAudioEvaluations(selectedAgentId, controller.signal);
     return () => controller.abort();
-  }, [selectedAgentId]);
+  }, [selectedAgentId, view]);
 
   useEffect(() => {
     setTestCallOpen(false);
@@ -111,7 +112,7 @@ export default function App() {
       setSelectedAgentId(saved.id);
       setAgents((current) => {
         const exists = current.some((agent) => agent.id === saved.id);
-        return exists ? current.map((agent) => agent.id === saved.id ? saved : agent) : [...current, saved];
+        return exists ? current.map((agent) => (agent.id === saved.id ? saved : agent)) : [...current, saved];
       });
       notify('Agent config saved');
     } catch (error) {
@@ -137,10 +138,11 @@ export default function App() {
           onViewChange={setView}
           activeView={view}
         />
-        {view === 'builder' ? <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} /> : null}
-        {view === 'runs' ? <RunsView runs={agentRuns} agent={selectedAgent} /> : null}
+        {view === 'builder' ? (
+          <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} />
+        ) : null}
+        {view === 'runs' ? <RunsView agent={selectedAgent} runs={agentRuns} /> : null}
         {view === 'audio' ? <AudioView records={audioEvaluations} agent={selectedAgent} /> : null}
-        {view === 'reports' ? <ReportsView runs={agentRuns} agent={selectedAgent} /> : null}
         {view === 'settings' ? <SettingsView /> : null}
       </Workspace>
       <TestCallPanel
@@ -149,10 +151,15 @@ export default function App() {
         onClose={() => setTestCallOpen(false)}
         onSessionUpdated={() => {
           void refreshRuns();
-          if (selectedAgentId) void refreshAudioEvaluations(selectedAgentId);
+          if (selectedAgentId && view === 'audio') void refreshAudioEvaluations(selectedAgentId);
         }}
       />
-      <Modal open={deployOpen} title="Deploy VoiceLab agent" subtitle="Deployment execution is intentionally outside the first implementation pass." onClose={() => setDeployOpen(false)} />
+      <Modal
+        open={deployOpen}
+        title="Deploy VoiceLab agent"
+        subtitle="Deployment execution is intentionally outside the first implementation pass."
+        onClose={() => setDeployOpen(false)}
+      />
       <Toast message={toast} />
     </div>
   );
