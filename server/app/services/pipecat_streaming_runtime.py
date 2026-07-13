@@ -1,10 +1,15 @@
+import audioop
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import uuid4
 
 from fastapi import WebSocket
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADAnalyzer, VADParams
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
@@ -16,10 +21,12 @@ from pipecat.frames.frames import (
     OutputAudioRawFrame,
     OutputTransportMessageFrame,
     TranscriptionFrame,
+    UserTurnInferenceCompletedFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.aggregators.llm_response_universal import LLMUserAggregatorParams
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
 from pipecat.serializers.base_serializer import FrameSerializer
@@ -29,6 +36,14 @@ from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+from pipecat.turns.user_start.vad_user_turn_start_strategy import VADUserTurnStartStrategy
+from pipecat.turns.user_stop.external_user_turn_completion_stop_strategy import (
+    ExternalUserTurnCompletionStopStrategy,
+)
+from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import (
+    TurnAnalyzerUserTurnStopStrategy,
+)
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 from pipecat_adk import AdkLLMService, SessionParams, VqlTTSMixin
 from pipecat_adk.frames import (
     VqlLLMFullResponseEndFrame,
@@ -76,6 +91,86 @@ class RawPcmWebsocketSerializer(FrameSerializer):
         if message.get("type") == "stop":
             return EndFrame(reason="client stop")
         return None
+
+
+class ResamplingSileroVADAnalyzer(VADAnalyzer):
+    def __init__(self, *, params: VADParams | None = None, target_sample_rate: int = 16000) -> None:
+        super().__init__(sample_rate=None, params=params)
+        self._target_sample_rate = target_sample_rate
+        self._delegate = SileroVADAnalyzer(sample_rate=target_sample_rate, params=params)
+        self._input_sample_rate = target_sample_rate
+        self._resample_state: tuple[Any, ...] | None = None
+
+    def set_sample_rate(self, sample_rate: int) -> None:
+        self._input_sample_rate = sample_rate
+        self._sample_rate = sample_rate
+        self._resample_state = None
+        self._delegate.set_sample_rate(self._target_sample_rate)
+        self.set_params(self._params)
+
+    def set_params(self, params: VADParams) -> None:
+        self._delegate.set_params(params)
+        super().set_params(params)
+
+    def num_frames_required(self) -> int:
+        target_frames = self._delegate.num_frames_required()
+        if self._input_sample_rate <= 0:
+            return target_frames
+        return max(1, round(target_frames * self._input_sample_rate / self._target_sample_rate))
+
+    def voice_confidence(self, buffer: bytes) -> float:
+        converted = buffer
+        if self._input_sample_rate != self._target_sample_rate:
+            converted, self._resample_state = audioop.ratecv(
+                buffer,
+                2,
+                1,
+                self._input_sample_rate,
+                self._target_sample_rate,
+                self._resample_state,
+            )
+        return self._delegate.voice_confidence(converted)
+
+    async def cleanup(self) -> None:
+        await self._delegate.cleanup()
+        await super().cleanup()
+
+
+class TurnTimingObserver:
+    def __init__(self) -> None:
+        self._turn_index = 0
+        self._active_turn: str | None = None
+        self._active_started_at: float | None = None
+
+    async def on_turn_started(self, _aggregator: Any, strategy: Any) -> None:
+        self._turn_index += 1
+        self._active_turn = f"T{self._turn_index}"
+        self._active_started_at = time.time()
+        logger.info(
+            "vad-turn start turn=%s timestamp=%.3f strategy=%s",
+            self._active_turn,
+            self._active_started_at,
+            strategy,
+        )
+
+    async def on_turn_stopped(self, _aggregator: Any, strategy: Any, _message: Any) -> None:
+        stopped_at = time.time()
+        turn = self._active_turn or f"T{self._turn_index or 1}"
+        started_at = self._active_started_at
+        duration_sec = (
+            round(stopped_at - started_at, 3)
+            if started_at is not None and stopped_at >= started_at
+            else 0.0
+        )
+        logger.info(
+            "vad-turn stop turn=%s timestamp=%.3f duration_sec=%.3f strategy=%s",
+            turn,
+            stopped_at,
+            duration_sec,
+            strategy,
+        )
+        self._active_turn = None
+        self._active_started_at = None
 
 
 class ProviderRequestTraceMixin:
@@ -219,6 +314,15 @@ class InstrumentedElevenLabsSTTService(ProviderRequestTraceMixin, ElevenLabsReal
             "xi-request-id",
         )
 
+    async def push_frame(self, frame: Frame, direction: FrameDirection = FrameDirection.DOWNSTREAM):
+        await super().push_frame(frame, direction)
+        if (
+            direction == FrameDirection.DOWNSTREAM
+            and isinstance(frame, TranscriptionFrame)
+            and getattr(self, "_commit_strategy", None) == CommitStrategy.VAD
+        ):
+            await self.queue_frame(UserTurnInferenceCompletedFrame(), direction)
+
     async def _process_response(self, data: dict):
         await self._record_provider_request_from_mapping(data, "request_id", "transcript_id")
         await super()._process_response(data)
@@ -330,6 +434,41 @@ class PlaybackTraceBridge(FrameProcessor):
 
 
 class PipecatStreamingRuntime:
+    def _user_turn_params(self, *, config: AgentConfig) -> LLMUserAggregatorParams:
+        vad_analyzer = ResamplingSileroVADAnalyzer(
+            params=VADParams(start_secs=0.2, stop_secs=0.2)
+        )
+        if config.stt_provider == "elevenlabs":
+            return LLMUserAggregatorParams(
+                vad_analyzer=vad_analyzer,
+                user_turn_strategies=UserTurnStrategies(
+                    start=[VADUserTurnStartStrategy()],
+                    stop=[ExternalUserTurnCompletionStopStrategy()],
+                ),
+                user_turn_stop_timeout=30.0,
+            )
+        return LLMUserAggregatorParams(
+            vad_analyzer=vad_analyzer,
+            user_turn_strategies=UserTurnStrategies(
+                start=[VADUserTurnStartStrategy()],
+                stop=[TurnAnalyzerUserTurnStopStrategy(turn_analyzer=LocalSmartTurnAnalyzerV3())],
+            ),
+        )
+
+    def _normalize_provider_error(self, exc: Exception) -> RuntimeError | None:
+        message = str(exc)
+        if "deepgram" not in message.lower():
+            return None
+        if "status_code: 403" not in message and " 403" not in message:
+            return None
+        if "websocket connection" not in message.lower():
+            return None
+        return RuntimeError(
+            "Deepgram rejected the realtime STT websocket with HTTP 403. "
+            "Check that the configured Deepgram API key is valid, active, attached to the "
+            "expected project, and allowed to use realtime listen/STT."
+        )
+
     def _deepgram_api_key(self, settings) -> str | None:
         return settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
 
@@ -487,7 +626,10 @@ class PipecatStreamingRuntime:
                 user_turn_completion_config=None,
             ),
         )
-        context = llm.create_context_aggregator()
+        context = llm.create_context_aggregator(user_params=self._user_turn_params(config=config))
+        turn_timing = TurnTimingObserver()
+        context.user().add_event_handler("on_user_turn_started", turn_timing.on_turn_started)
+        context.user().add_event_handler("on_user_turn_stopped", turn_timing.on_turn_stopped)
         stt = self._build_stt_service(
             settings=settings,
             config=config,
@@ -608,6 +750,11 @@ class PipecatStreamingRuntime:
         await audio_buffer.start_recording()
         try:
             await runner.run(task)
+        except Exception as exc:
+            normalized_error = self._normalize_provider_error(exc)
+            if normalized_error is not None:
+                raise normalized_error from exc
+            raise
         finally:
             await stt_evaluation.finalize()
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
