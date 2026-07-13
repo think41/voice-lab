@@ -5,7 +5,7 @@ export const defaultAgentConfig: AgentConfig = {
   model: 'gemini-2.5-flash',
   instruction: 'You are a concise hotel booking voice assistant. Ask for dates, room type, guest count, and confirm before booking.',
   stt_provider: 'deepgram',
-  stt_model: 'nova-3-monolingual',
+  stt_model: 'nova-3',
   tts_provider: 'deepgram',
   tts_voice: 'aura-asteria-en',
   temperature: 0.4,
