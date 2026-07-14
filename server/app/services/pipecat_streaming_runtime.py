@@ -1,6 +1,6 @@
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 from uuid import uuid4
 
@@ -140,7 +140,37 @@ class ProviderRequestTraceMixin:
                 return
 
 
-class InstrumentedDeepgramSTTService(ProviderRequestTraceMixin, DeepgramSTTService):
+class SttUsageMeterMixin:
+    """Meter raw audio bytes actually sent to the STT provider.
+
+    `STTService.process_audio_frame` applies the mute/reconnect/empty-frame
+    guards and only then calls `run_stt`, so every byte counted here is audio
+    the provider bills for (silence included). VAD turn audio undercounts.
+    """
+
+    _streamed_audio_bytes: int = 0
+    _provider_reported_audio_seconds: float = 0.0
+
+    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
+        self._streamed_audio_bytes += len(audio)
+        async for frame in super().run_stt(audio):
+            yield frame
+
+    @property
+    def streamed_audio_seconds(self) -> float:
+        if not self.sample_rate:
+            return 0.0
+        # 16-bit mono PCM: 2 bytes per sample.
+        return self._streamed_audio_bytes / (self.sample_rate * 2)
+
+    @property
+    def provider_reported_audio_seconds(self) -> float | None:
+        return self._provider_reported_audio_seconds or None
+
+
+class InstrumentedDeepgramSTTService(
+    SttUsageMeterMixin, ProviderRequestTraceMixin, DeepgramSTTService
+):
     def __init__(
         self, *, record_trace: TraceRecorder, provider_model: str, run_tag: str, **kwargs: Any
     ) -> None:
@@ -158,6 +188,11 @@ class InstrumentedDeepgramSTTService(ProviderRequestTraceMixin, DeepgramSTTServi
     async def _on_message(self, message: Any) -> None:
         if isinstance(message, ListenV1Metadata):
             await self._record_provider_request(message.request_id)
+            # Deepgram reports processed audio duration per connection on
+            # close; accumulate across reconnects for meter calibration.
+            duration = getattr(message, "duration", None)
+            if duration:
+                self._provider_reported_audio_seconds += float(duration)
         elif isinstance(message, ListenV1Results):
             metadata = getattr(message, "metadata", None)
             await self._record_provider_request(getattr(metadata, "request_id", None))
@@ -193,7 +228,9 @@ class AdkDeepgramTTSService(ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSS
         await self._record_provider_request_from_headers(response_headers, "dg-request-id")
 
 
-class InstrumentedElevenLabsSTTService(ProviderRequestTraceMixin, ElevenLabsRealtimeSTTService):
+class InstrumentedElevenLabsSTTService(
+    SttUsageMeterMixin, ProviderRequestTraceMixin, ElevenLabsRealtimeSTTService
+):
     def __init__(
         self, *, record_trace: TraceRecorder, provider_model: str, run_tag: str, **kwargs: Any
     ) -> None:
@@ -609,5 +646,17 @@ class PipecatStreamingRuntime:
         try:
             await runner.run(task)
         finally:
-            await stt_evaluation.finalize()
+            try:
+                await record_trace(
+                    "usage.stt",
+                    {
+                        "provider": config.stt_provider,
+                        "model": config.stt_model,
+                        "streamed_seconds": round(stt.streamed_audio_seconds, 3),
+                        "speech_seconds": stt_evaluation.session_duration_sec,
+                        "provider_reported_seconds": stt.provider_reported_audio_seconds,
+                    },
+                )
+            finally:
+                await stt_evaluation.finalize()
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)

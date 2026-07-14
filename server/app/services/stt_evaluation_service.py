@@ -64,6 +64,10 @@ class SttEvaluationSession:
         self._background_tasks: set[asyncio.Task[None]] = set()
         self._provider_results_by_name: dict[str, list[ProviderEvaluationResult]] = {}
 
+    @property
+    def session_duration_sec(self) -> float:
+        return round(self._session_duration_sec, 3)
+
     async def handle_user_turn_audio(
         self, audio: bytes, sample_rate: int, num_channels: int
     ) -> None:
