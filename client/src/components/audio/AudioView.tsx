@@ -156,35 +156,46 @@ export function AudioView({ agent, records }: AudioViewProps) {
                 <h3 className="text-sm font-semibold text-text">Cost comparision across models</h3>
                 <p className="mt-1 text-xs text-faint">Computed from this audio session’s total user-turn duration. No extra provider calls required.</p>
               </div>
-              <div className="grid gap-4 md:grid-cols-3">
-                {Object.entries(selectedRecord.session_model_costs_usd).map(([provider, models]) => {
-                  const rankedModels = Object.entries(models).sort((a, b) => a[1] - b[1]);
-                  const lowestModel = rankedModels[0]?.[0] ?? null;
-                  const highestModel = rankedModels[rankedModels.length - 1]?.[0] ?? null;
-                  return (
-                  <div key={provider} className="rounded-xl border border-line bg-off p-4">
-                    <div className="mb-3 text-sm font-semibold text-text">{titleCase(provider)} STT</div>
-                    <div className="space-y-2 text-xs">
-                      {Object.entries(models).map(([model, cost]) => (
-                        <div key={model} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
-                          <div className="min-w-0">
-                            <div className="font-medium text-muted">{model}</div>
-                            <div className="mt-1 flex gap-1">
-                              {model === highestModel && rankedModels.length > 1 ? (
-                                <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Highest</span>
-                              ) : null}
-                              {model === lowestModel && rankedModels.length > 1 ? (
-                                <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lowest</span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <span className="font-mono text-text">~${cost.toFixed(6)}</span>
+              {(() => {
+                const allEntries = Object.entries(selectedRecord.session_model_costs_usd).flatMap(([provider, models]) =>
+                  Object.entries(models).map(([model, cost]) => ({ provider, model, cost })),
+                );
+                const rankedAll = [...allEntries].sort((a, b) => a.cost - b.cost);
+                const globalLowest = rankedAll[0] ?? null;
+                const globalHighest = rankedAll[rankedAll.length - 1] ?? null;
+                const hasSpread = rankedAll.length > 1;
+                return (
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {Object.entries(selectedRecord.session_model_costs_usd).map(([provider, models]) => (
+                      <div key={provider} className="rounded-xl border border-line bg-off p-4">
+                        <div className="mb-3 text-sm font-semibold text-text">{titleCase(provider)} STT</div>
+                        <div className="space-y-2 text-xs">
+                          {Object.entries(models).map(([model, cost]) => {
+                            const isHighest = hasSpread && globalHighest?.provider === provider && globalHighest?.model === model;
+                            const isLowest = hasSpread && globalLowest?.provider === provider && globalLowest?.model === model;
+                            return (
+                              <div key={model} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                                <div className="min-w-0">
+                                  <div className="font-medium text-muted">{model}</div>
+                                  <div className="mt-1 flex gap-1">
+                                    {isHighest ? (
+                                      <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Highest</span>
+                                    ) : null}
+                                    {isLowest ? (
+                                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lowest</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                <span className="font-mono text-text">~${cost.toFixed(6)}</span>
+                              </div>
+                            );
+                          })}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                )})}
-              </div>
+                );
+              })()}
             </div>
           </>
         ) : null}
