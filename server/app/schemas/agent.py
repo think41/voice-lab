@@ -3,17 +3,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 SUPPORTED_MODELS = {
-    "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
 }
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash"
 SUPPORTED_STT_PROVIDERS = {"deepgram", "elevenlabs"}
 SUPPORTED_TTS_PROVIDERS = {"deepgram", "elevenlabs"}
 DEFAULT_STT_PROVIDER = "deepgram"
 DEFAULT_TTS_PROVIDER = "deepgram"
 DEFAULT_STT_MODEL_BY_PROVIDER = {
-    "deepgram": "nova-3-monolingual",
+    "deepgram": "nova-3",
     "elevenlabs": "scribe_v2",
 }
 DEFAULT_TTS_VOICE_BY_PROVIDER = {
@@ -25,8 +24,12 @@ DEFAULT_TTS_MODEL_BY_PROVIDER = {
     "elevenlabs": "eleven_turbo_v2_5",
 }
 SUPPORTED_STT_MODELS = {
-    "deepgram": {"nova-3-monolingual", "nova-3-multilingual"},
+    "deepgram": {"nova-3"},
     "elevenlabs": {"scribe_v2", "scribe_v2_realtime"},
+}
+LEGACY_DEEPGRAM_STT_MODELS = {
+    "nova-3-monolingual": "nova-3",
+    "nova-3-multilingual": "nova-3",
 }
 SUPPORTED_DEEPGRAM_VOICES = {
     "aura-asteria-en",
@@ -73,6 +76,9 @@ class AgentConfig(BaseModel):
             self.stt_provider = DEFAULT_STT_PROVIDER
         if self.tts_provider not in SUPPORTED_TTS_PROVIDERS:
             self.tts_provider = DEFAULT_TTS_PROVIDER
+
+        if self.stt_provider == "deepgram":
+            self.stt_model = LEGACY_DEEPGRAM_STT_MODELS.get(self.stt_model, self.stt_model)
 
         supported_stt_models = SUPPORTED_STT_MODELS[self.stt_provider]
         if self.stt_model not in supported_stt_models:

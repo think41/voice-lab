@@ -103,7 +103,7 @@ order by sequence;
 ## Current Provider Defaults
 
 Current intended defaults:
-- LLM: `gemini-2.5-flash`
+- LLM: `gemini-3.5-flash`
 - STT provider: `deepgram`
 - STT model: `nova-2`
 - TTS provider: `deepgram`
@@ -190,8 +190,7 @@ Recent runs:
 
 ## Known Issues And Notes
 
-- Gemini `gemini-2.5-flash` works with the current API key, but may return `503 UNAVAILABLE` during high demand.
-- `gemini-2.0-flash` returned quota errors for the tested key. Avoid older saved agents using that model.
+- Gemini 2.x IDs (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.5-flash-lite`, `gemini-2.0-flash`) are deprecated: Google's API returns `404 NOT_FOUND` "This model is no longer available to new users." Use `gemini-3.5-flash` (default), `gemini-3.1-pro`, or `gemini-3.1-flash-lite` instead. Old saved rows are normalized to the default by the pydantic validator on read.
 - ADK agent names must be valid Python identifiers. Numeric names like `41` are normalized to `agent_41`.
 - Existing saved DB rows can preserve old model values. If behavior looks wrong, inspect `agents.config->>'model'`.
 - Do not store base64 audio in `trace_events`; store text and metadata only.

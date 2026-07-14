@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     deepgram_management_api_key: str | None = None
     deepgram_project_id: str | None = None
     enable_stt_evaluation: bool = False
+    enable_tts_evaluation: bool = False
     stt_evaluation_recordings_dir: str = "recordings"
     stt_evaluation_deepgram_model: str = "nova-3-monolingual"
     stt_evaluation_elevenlabs_model: str = "scribe_v2"
