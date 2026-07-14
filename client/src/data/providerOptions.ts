@@ -3,9 +3,8 @@ import type { AgentConfig, Provider } from '../lib/types';
 type Option = { value: string; label: string };
 
 export const modelOptions: Option[] = [
-  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-  { value: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-  { value: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+  { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+  { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
 ];
 
 export const sttProviderOptions: Option[] = [
@@ -31,8 +30,7 @@ export const deepgramVoiceOptions: Option[] = [
 
 const sttModelOptionsByProvider: Record<Provider, Option[]> = {
   deepgram: [
-    { value: 'nova-3-monolingual', label: 'Nova-3 Monolingual' },
-    { value: 'nova-3-multilingual', label: 'Nova-3 Multilingual' },
+    { value: 'nova-3', label: 'Nova-3' },
   ],
   elevenlabs: [
     { value: 'scribe_v2', label: 'Scribe v2' },
@@ -41,7 +39,7 @@ const sttModelOptionsByProvider: Record<Provider, Option[]> = {
 };
 
 const defaultSttModelByProvider: Record<Provider, string> = {
-  deepgram: 'nova-3-monolingual',
+  deepgram: 'nova-3',
   elevenlabs: 'scribe_v2',
 };
 
@@ -85,9 +83,14 @@ export function getTtsVoicePlaceholder(provider: string): string {
 export function normalizeSpeechConfig(config: AgentConfig): AgentConfig {
   const sttProvider = normalizeProvider(config.stt_provider);
   const ttsProvider = normalizeProvider(config.tts_provider);
+  const normalizedSttModel =
+    sttProvider === 'deepgram' &&
+    (config.stt_model === 'nova-3-monolingual' || config.stt_model === 'nova-3-multilingual')
+      ? 'nova-3'
+      : config.stt_model;
   const sttModelOptions = getSttModelOptions(sttProvider).map((option) => option.value);
-  const sttModel = sttModelOptions.includes(config.stt_model)
-    ? config.stt_model
+  const sttModel = sttModelOptions.includes(normalizedSttModel)
+    ? normalizedSttModel
     : getDefaultSttModel(sttProvider);
 
   let ttsVoice = config.tts_voice;

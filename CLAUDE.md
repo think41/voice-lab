@@ -57,7 +57,7 @@ Every voice or text session creates a `runs` row and appends `trace_events`; the
 
 ## Provider / model gotchas
 
-- Default LLM: `gemini-2.5-flash`. `gemini-2.0-flash` has returned quota errors on the tested key — avoid it, and check `agents.config->>'model'` on old saved rows if behavior looks off.
+- Default LLM: `gemini-3.5-flash`. Gemini 2.x models (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.0-flash`) were deprecated by Google — the API now returns 404 "no longer available to new users". Check `agents.config->>'model'` on old saved rows and expect the pydantic validator to normalize them to the current default.
 - ADK agent names must be valid Python identifiers; numeric names like `41` are normalized to `agent_41` at runtime.
 - Deepgram TTS currently prefers `STT_API_KEY`, with `TTS_API_KEY` as fallback.
 - When debugging keys, print only presence / length / suffix — never the full value.

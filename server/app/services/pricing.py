@@ -5,6 +5,9 @@ from typing import Any
 
 # LLM rates: USD per 1M input / output tokens.
 LLM_RATES: dict[str, dict[str, Decimal]] = {
+    "gemini-3.5-flash": {"input_per_1m": Decimal("1.50"), "output_per_1m": Decimal("9.00")},
+    "gemini-3.1-flash-lite": {"input_per_1m": Decimal("0.10"), "output_per_1m": Decimal("0.40")},
+    # Legacy (deprecated by Google, kept so historical runs still cost-compute).
     "gemini-2.5-flash": {"input_per_1m": Decimal("0.30"), "output_per_1m": Decimal("2.50")},
     "gemini-2.5-pro": {"input_per_1m": Decimal("1.25"), "output_per_1m": Decimal("10.00")},
     "gemini-2.0-flash": {"input_per_1m": Decimal("0.10"), "output_per_1m": Decimal("0.40")},

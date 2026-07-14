@@ -15,7 +15,7 @@ def test_build_adk_app_uses_ui_config() -> None:
     runtime = PipecatAdkRuntime()
     config = AgentConfig(
         name="Hotel Booking",
-        model="gemini-2.5-flash",
+        model="gemini-3.5-flash",
         instruction="Book hotel rooms politely.",
     )
     app = runtime.build_adk_app(config)

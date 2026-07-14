@@ -17,12 +17,12 @@ import { SettingsView } from './views/SettingsView';
 
 type View = 'builder' | 'runs' | 'audio' | 'settings';
 
-const supportedModels = new Set(['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-lite']);
+const supportedModels = new Set(['gemini-3.5-flash', 'gemini-3.1-flash-lite']);
 
 function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
   return normalizeSpeechConfig({
     ...config,
-    model: supportedModels.has(config.model) ? config.model : 'gemini-2.5-flash',
+    model: supportedModels.has(config.model) ? config.model : 'gemini-3.5-flash',
   });
 }
 
