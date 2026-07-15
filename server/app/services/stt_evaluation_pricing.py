@@ -4,27 +4,31 @@ from decimal import Decimal
 
 RATE_PER_MINUTE_USD: dict[str, dict[str, Decimal]] = {
     "deepgram": {
-        "nova-3-monolingual": Decimal("0.0048"),
-        "nova-3-multilingual": Decimal("0.0058"),
+        "nova-3": Decimal("0.0043"),
+        "nova-3-streaming": Decimal("0.0077"),
+        "nova-3-multilingual": Decimal("0.0043"),
     },
     "elevenlabs": {
         "scribe-v2": Decimal("0.00367"),
         "scribe-v2-realtime": Decimal("0.0065"),
     },
     "sarvam": {
-        "saarika": Decimal("0.0060"),
+        "saarika": Decimal("0.005263"),
+        "saarika-diarization": Decimal("0.007895"),
     },
 }
 
 PRODUCTION_MODEL_BY_PROVIDER = {
-    "deepgram": "nova-3-monolingual",
+    "deepgram": "nova-3",
     "elevenlabs": "scribe_v2",
     "sarvam": "saarika:v2",
 }
 
 PRICING_MODEL_ALIASES = {
     "deepgram": {
-        "nova-3-monolingual": "nova-3-monolingual",
+        "nova-3": "nova-3",
+        "nova-3-monolingual": "nova-3",
+        "nova-3-streaming": "nova-3-streaming",
         "nova-3-multilingual": "nova-3-multilingual",
     },
     "elevenlabs": {
@@ -39,6 +43,9 @@ PRICING_MODEL_ALIASES = {
         "saarika:v2": "saarika",
         "saarika:v2.5": "saarika",
         "saarika:flash": "saarika",
+        "saarika:diarization": "saarika-diarization",
+        "saarika-v2-diarization": "saarika-diarization",
+        "saarika-diarization": "saarika-diarization",
         "saarika-v1": "saarika",
         "saarika-v2": "saarika",
         "saarika": "saarika",

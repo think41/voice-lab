@@ -22,12 +22,20 @@ def test_llm_cost_unknown_model_is_zero() -> None:
 
 
 def test_stt_cost_deepgram_nova_3() -> None:
-    # $0.0043 per audio minute.
+    # $0.0077 per audio minute for streaming.
+    cost = compute_cost(
+        "usage.stt",
+        {"streamed_seconds": 60, "provider": "deepgram", "model": "nova-3"},
+    )
+    assert float(cost) == 0.0077
+
+
+def test_stt_cost_falls_back_to_audio_seconds_for_legacy_payloads() -> None:
     cost = compute_cost(
         "usage.stt",
         {"audio_seconds": 60, "provider": "deepgram", "model": "nova-3"},
     )
-    assert float(cost) == 0.0043
+    assert float(cost) == 0.0077
 
 
 def test_tts_cost_deepgram_aura_2() -> None:
@@ -58,7 +66,7 @@ def test_session_totals_sums_across_events() -> None:
         ),
         SimpleNamespace(
             event_type="usage.stt",
-            payload={"audio_seconds": 30, "provider": "deepgram", "model": "nova-3"},
+            payload={"streamed_seconds": 30, "provider": "deepgram", "model": "nova-3"},
         ),
         SimpleNamespace(
             event_type="usage.tts",
@@ -70,13 +78,14 @@ def test_session_totals_sums_across_events() -> None:
     assert totals["llm"]["total_tokens"] == 2500
     # 2000*0.30/1e6 + 500*2.50/1e6 = 0.0006 + 0.00125 = 0.00185
     assert totals["llm"]["cost_usd"] == 0.00185
-    # 30/60 * 0.0043 = 0.00215
+    # 30/60 * 0.0077 = 0.00385
     assert totals["stt"]["audio_seconds"] == 30.0
-    assert totals["stt"]["cost_usd"] == 0.00215
+    assert totals["stt"]["streamed_seconds"] == 30.0
+    assert totals["stt"]["cost_usd"] == 0.00385
     # 500/1e6 * 30.0 = 0.015
     assert totals["tts"]["characters"] == 500
     assert totals["tts"]["cost_usd"] == 0.015
-    assert totals["total_cost_usd"] == 0.019
+    assert totals["total_cost_usd"] == 0.0207
     assert totals["stt"]["source"] == "runtime"
     assert totals["tts"]["source"] == "runtime"
 
@@ -125,6 +134,7 @@ def test_session_totals_ignores_legacy_provider_usage_reconciliation_events() ->
     totals = session_totals(events)
 
     assert totals["stt"]["audio_seconds"] == 30.0
+    assert totals["stt"]["streamed_seconds"] == 30.0
     assert totals["stt"]["cost_usd"] == 0.00215
     assert totals["stt"]["source"] == "runtime"
     assert totals["tts"]["characters"] == 500

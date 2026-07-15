@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 from uuid import uuid4
 
+from deepgram.listen.v1.types import ListenV1Metadata, ListenV1Results
 from fastapi import WebSocket
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -20,14 +21,14 @@ from pipecat.frames.frames import (
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.base_serializer import FrameSerializer
-from pipecat.services.settings import LLMSettings
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.settings import LLMSettings
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat_adk import AdkLLMService, SessionParams, VqlTTSMixin
 from pipecat_adk.frames import (
@@ -35,15 +36,15 @@ from pipecat_adk.frames import (
     VqlLLMFullResponseStartFrame,
     VqlLLMTextFrame,
 )
-from deepgram.listen.v1.types import ListenV1Metadata, ListenV1Results
 
 from app.core.config import get_settings
-from app.schemas.agent import AgentConfig, DEFAULT_TTS_MODEL_BY_PROVIDER
+from app.schemas.agent import DEFAULT_TTS_MODEL_BY_PROVIDER, AgentConfig
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 from app.services.pipeline_metrics import (
     MetricsSink,
 )
+from app.services.pricing import compute_cost
 from app.services.stt_evaluation_service import SttEvaluationSession
 
 logger = logging.getLogger("uvicorn.error")
@@ -647,15 +648,17 @@ class PipecatStreamingRuntime:
             await runner.run(task)
         finally:
             try:
+                stt_usage_payload = {
+                    "provider": config.stt_provider,
+                    "model": config.stt_model,
+                    "streamed_seconds": round(stt.streamed_audio_seconds, 3),
+                    "speech_seconds": stt_evaluation.session_duration_sec,
+                    "provider_reported_seconds": stt.provider_reported_audio_seconds,
+                }
+                stt_usage_payload["cost_usd"] = float(compute_cost("usage.stt", stt_usage_payload))
                 await record_trace(
                     "usage.stt",
-                    {
-                        "provider": config.stt_provider,
-                        "model": config.stt_model,
-                        "streamed_seconds": round(stt.streamed_audio_seconds, 3),
-                        "speech_seconds": stt_evaluation.session_duration_sec,
-                        "provider_reported_seconds": stt.provider_reported_audio_seconds,
-                    },
+                    stt_usage_payload,
                 )
             finally:
                 await stt_evaluation.finalize()

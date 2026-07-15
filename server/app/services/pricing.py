@@ -23,9 +23,14 @@ LLM_RATES: dict[str, dict[str, Decimal]] = {
 
 # STT rates: USD per audio-minute submitted.
 STT_RATES: dict[str, Decimal] = {
-    "deepgram:nova-3": Decimal("0.0043"),
+    "deepgram:nova-3": Decimal("0.0077"),
+    "deepgram:nova-3-streaming": Decimal("0.0077"),
+    "deepgram:nova-3-multilingual": Decimal("0.0043"),
     "deepgram:nova-2": Decimal("0.0043"),
-    "deepgram:base": Decimal("0.0125"),
+    "elevenlabs:scribe-v2": Decimal("0.00367"),
+    "elevenlabs:scribe-v2-realtime": Decimal("0.0065"),
+    "sarvam:saarika": Decimal("0.005263"),
+    "sarvam:saarika-diarization": Decimal("0.007895"),
 }
 
 # TTS rates: USD per 1M characters synthesized.
@@ -55,7 +60,7 @@ def _stt_cost(payload: dict[str, Any]) -> Decimal:
     rate = STT_RATES.get(key)
     if rate is None:
         return Decimal("0")
-    seconds = Decimal(str(payload.get("audio_seconds") or 0))
+    seconds = _stt_seconds(payload)
     return (seconds / Decimal("60")) * rate
 
 
@@ -107,7 +112,7 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
                 llm_latencies_ms.append(float(inline_latency))
         elif event.event_type == "usage.stt":
             payload = event.payload or {}
-            local_stt_seconds += Decimal(str(payload.get("audio_seconds") or 0))
+            local_stt_seconds += _stt_seconds(payload)
             local_stt_cost += _stt_cost(payload)
         elif event.event_type == "usage.tts":
             payload = event.payload or {}
@@ -141,6 +146,7 @@ def session_totals(events: list[Any]) -> dict[str, Any]:
         },
         "stt": {
             "audio_seconds": _q(stt_seconds, "0.001"),
+            "streamed_seconds": _q(stt_seconds, "0.001"),
             "cost_usd": _q(stt_cost),
             "source": "runtime",
         },
@@ -158,6 +164,12 @@ def _avg(values: list[float]) -> float:
     if not values:
         return 0.0
     return round(sum(values) / len(values), 1)
+
+
+def _stt_seconds(payload: dict[str, Any]) -> Decimal:
+    return Decimal(
+        str(payload.get("streamed_seconds") or payload.get("audio_seconds") or 0)
+    )
 
 
 def _q(value: Decimal, quant: str = "0.000001") -> float:

@@ -39,6 +39,7 @@ class RunRepository:
         result = await self.session.execute(
             select(RunRecord)
             .where(RunRecord.agent_id == agent_id)
+            .options(selectinload(RunRecord.trace_events))
             .order_by(RunRecord.created_at.desc())
         )
         return list(result.scalars())

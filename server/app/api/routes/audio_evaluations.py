@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.db import get_db_session
 from app.repositories.run_repository import RunRepository
+from app.services.stt_evaluation_pricing import compute_all_model_costs
 from app.services.stt_evaluation_store import resolve_recordings_root
 
 router = APIRouter(prefix="/audio-evaluations", tags=["audio-evaluations"])
@@ -31,6 +32,8 @@ class AudioEvaluationRead(BaseModel):
     created_at: str
     turn_count: int
     session_stt_duration_sec: float
+    streamed_seconds: float
+    stt_cost_usd: float | None = None
     session_model_costs_usd: dict[str, dict[str, float]]
     provider_session_metrics: dict[str, AudioProviderMetricsRead]
     file_paths: list[str]
@@ -51,6 +54,7 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
         payload = _load_metrics_summary(metrics_path)
         if payload is None:
             continue
+        usage = _extract_usage_stt(run.trace_events)
         records.append(
             AudioEvaluationRead(
                 session_id=run.adk_session_id,
@@ -58,8 +62,13 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
                 adk_session_id=run.adk_session_id,
                 created_at=run.created_at.isoformat(),
                 turn_count=payload["turn_count"],
-                session_stt_duration_sec=payload["session_stt_duration_sec"],
-                session_model_costs_usd=payload["session_model_costs_usd"],
+                session_stt_duration_sec=usage["streamed_seconds"]
+                or payload["session_stt_duration_sec"],
+                streamed_seconds=usage["streamed_seconds"],
+                stt_cost_usd=usage["cost_usd"],
+                session_model_costs_usd=compute_all_model_costs(
+                    usage["streamed_seconds"] or payload["session_stt_duration_sec"]
+                ),
                 provider_session_metrics=payload["provider_session_metrics"],
                 file_paths=payload["file_paths"],
                 evaluate_mode=payload["evaluate_mode"],
@@ -96,3 +105,24 @@ def _load_metrics_summary(metrics_path: Path) -> dict[str, Any] | None:
         "provider_session_metrics": session_summary.get("provider_session_metrics") or {},
         "evaluate_mode": bool(session_summary.get("evaluate_mode", False)),
     }
+
+
+def _extract_usage_stt(trace_events: list[Any]) -> dict[str, float | None]:
+    for event in reversed(trace_events):
+        if getattr(event, "event_type", None) != "usage.stt":
+            continue
+        payload = getattr(event, "payload", {}) or {}
+        return {
+            "streamed_seconds": float(payload.get("streamed_seconds") or 0.0),
+            "cost_usd": _to_float(payload.get("cost_usd")),
+        }
+    return {"streamed_seconds": 0.0, "cost_usd": None}
+
+
+def _to_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

@@ -18,9 +18,11 @@ def test_compute_duration_seconds_for_stereo_pcm16() -> None:
 def test_compute_all_model_costs_reuses_same_duration() -> None:
     costs = compute_all_model_costs(60.0)
 
-    assert costs["deepgram"]["nova-3-monolingual"] == 0.0048
+    assert costs["deepgram"]["nova-3"] == 0.0043
+    assert costs["deepgram"]["nova-3-streaming"] == 0.0077
     assert costs["elevenlabs"]["scribe-v2"] == 0.00367
-    assert costs["sarvam"]["saarika"] == 0.006
+    assert costs["sarvam"]["saarika"] == 0.005263
+    assert costs["sarvam"]["saarika-diarization"] == 0.007895
 
 
 def test_compute_model_cost_returns_zero_for_unknown_model() -> None:
