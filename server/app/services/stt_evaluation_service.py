@@ -21,6 +21,9 @@ from app.services.stt_evaluation_pricing import (
     pricing_model_name,
 )
 from app.services.stt_evaluation_store import SavedTurnAudio, SttEvaluationStore
+from app.services.tts_evaluation_pricing import (
+    compute_all_model_costs as compute_all_tts_model_costs,
+)
 
 logger = logging.getLogger("uvicorn.error")
 TraceRecorder = Callable[[str, dict[str, object]], Awaitable[None]]
@@ -156,22 +159,25 @@ class SttEvaluationSession:
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
 
-    async def finalize(self) -> None:
+    async def finalize(self, *, tts_sent_characters: int | None = None) -> None:
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
-        await self._store.append_metrics(
-            self._session_id,
-            {
-                "type": "session.summary",
-                "session_id": self._session_id,
-                "run_id": self._run_id,
-                "session_stt_duration_sec": round(self._session_duration_sec, 3),
-                "session_model_costs_usd": compute_session_model_costs(self._session_duration_sec),
-                "provider_session_metrics": self._provider_session_metrics(),
-                "evaluate_mode": self._evaluate_mode,
-            },
-        )
+        summary: dict[str, Any] = {
+            "type": "session.summary",
+            "session_id": self._session_id,
+            "run_id": self._run_id,
+            "session_stt_duration_sec": round(self._session_duration_sec, 3),
+            "session_model_costs_usd": compute_session_model_costs(self._session_duration_sec),
+            "provider_session_metrics": self._provider_session_metrics(),
+            "evaluate_mode": self._evaluate_mode,
+        }
+        if tts_sent_characters is not None:
+            summary["session_tts_sent_characters"] = int(tts_sent_characters)
+            summary["session_tts_model_costs_usd"] = compute_all_tts_model_costs(
+                int(tts_sent_characters)
+            )
+        await self._store.append_metrics(self._session_id, summary)
         await self._record_trace(
             "evaluation.stt.session_summary",
             {

@@ -200,7 +200,35 @@ class InstrumentedDeepgramSTTService(
         await super()._on_message(message)
 
 
-class AdkDeepgramTTSService(ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSService):
+class TtsUsageMeterMixin:
+    """Meter characters actually sent to the TTS provider.
+
+    `run_tts` receives the final prepared text (post text-transforms) and
+    immediately sends it to the provider (`Speak` message for Deepgram,
+    context text for ElevenLabs). Providers bill on characters sent —
+    including text later cleared/closed by an interruption — so this counts
+    the billed quantity. Transcript-derived counts undercount whenever the
+    user interrupts, and Pipecat's built-in `TTSUsageMetricsData` metric is
+    never emitted by the Deepgram websocket service and is dropped on
+    interruption, so we count at the send seam ourselves (same approach as
+    `SttUsageMeterMixin`).
+    """
+
+    _sent_characters: int = 0
+
+    async def run_tts(self, text: str, context_id: str) -> AsyncGenerator[Frame | None, None]:
+        self._sent_characters += len(text)
+        async for frame in super().run_tts(text, context_id):
+            yield frame
+
+    @property
+    def sent_characters(self) -> int:
+        return self._sent_characters
+
+
+class AdkDeepgramTTSService(
+    TtsUsageMeterMixin, ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSService
+):
     def __init__(
         self,
         *,
@@ -262,7 +290,9 @@ class InstrumentedElevenLabsSTTService(
         await super()._process_response(data)
 
 
-class AdkElevenLabsTTSService(ProviderRequestTraceMixin, VqlTTSMixin, ElevenLabsTTSService):
+class AdkElevenLabsTTSService(
+    TtsUsageMeterMixin, ProviderRequestTraceMixin, VqlTTSMixin, ElevenLabsTTSService
+):
     def __init__(
         self,
         *,
@@ -660,6 +690,15 @@ class PipecatStreamingRuntime:
                     "usage.stt",
                     stt_usage_payload,
                 )
+                await record_trace(
+                    "usage.tts",
+                    {
+                        "provider": config.tts_provider,
+                        "model": metrics_tts_model,
+                        "voice": config.tts_voice,
+                        "sent_characters": tts.sent_characters,
+                    },
+                )
             finally:
-                await stt_evaluation.finalize()
+                await stt_evaluation.finalize(tts_sent_characters=tts.sent_characters)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
