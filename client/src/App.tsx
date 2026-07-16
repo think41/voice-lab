@@ -8,8 +8,17 @@ import { Modal } from './components/ui/Modal';
 import { Toast } from './components/ui/Toast';
 import { defaultAgentConfig } from './data/defaults';
 import { normalizeSpeechConfig } from './data/providerOptions';
-import { createAgent, isAbortError, listAgents, listAudioEvaluations, listRuns, updateAgent } from './lib/api';
-import type { AgentConfig, AgentRecord, AudioEvaluationRecord, RunRecord } from './lib/types';
+import {
+  createAgent,
+  getDeepgramCatalog,
+  getElevenLabsCatalog,
+  isAbortError,
+  listAgents,
+  listAudioEvaluations,
+  listRuns,
+  updateAgent,
+} from './lib/api';
+import type { AgentConfig, AgentRecord, AudioEvaluationRecord, ProviderCatalog, RunRecord } from './lib/types';
 import { BuilderView } from './views/BuilderView';
 import { AudioView } from './views/AudioView';
 import { RunsView } from './views/RunsView';
@@ -33,6 +42,8 @@ export default function App() {
   const [draftConfig, setDraftConfig] = useState<AgentConfig>(defaultAgentConfig);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [audioEvaluations, setAudioEvaluations] = useState<AudioEvaluationRecord[]>([]);
+  const [deepgramCatalog, setDeepgramCatalog] = useState<ProviderCatalog | null>(null);
+  const [elevenLabsCatalog, setElevenLabsCatalog] = useState<ProviderCatalog | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [deployOpen, setDeployOpen] = useState(false);
   const [testCallOpen, setTestCallOpen] = useState(false);
@@ -50,6 +61,7 @@ export default function App() {
     const controller = new AbortController();
     void refreshAgents(controller.signal);
     void refreshRuns(controller.signal);
+    void refreshProviderCatalogs(controller.signal);
     return () => controller.abort();
   }, []);
 
@@ -105,6 +117,21 @@ export default function App() {
     }
   };
 
+  const refreshProviderCatalogs = async (signal?: AbortSignal) => {
+    try {
+      const [deepgram, elevenlabs] = await Promise.all([
+        getDeepgramCatalog(signal),
+        getElevenLabsCatalog(signal),
+      ]);
+      setDeepgramCatalog(deepgram);
+      setElevenLabsCatalog(elevenlabs);
+    } catch (error) {
+      if (isAbortError(error)) return;
+      setDeepgramCatalog(null);
+      setElevenLabsCatalog(null);
+    }
+  };
+
   const saveConfig = async () => {
     try {
       const config = normalizeVoiceConfig(draftConfig);
@@ -139,7 +166,13 @@ export default function App() {
           activeView={view}
         />
         {view === 'builder' ? (
-          <BuilderView config={draftConfig} onConfigChange={setDraftConfig} onSave={saveConfig} />
+          <BuilderView
+            config={draftConfig}
+            onConfigChange={setDraftConfig}
+            onSave={saveConfig}
+            deepgramCatalog={deepgramCatalog}
+            elevenLabsCatalog={elevenLabsCatalog}
+          />
         ) : null}
         {view === 'runs' ? <RunsView agent={selectedAgent} runs={agentRuns} /> : null}
         {view === 'audio' ? <AudioView records={audioEvaluations} agent={selectedAgent} /> : null}

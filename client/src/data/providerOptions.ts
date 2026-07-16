@@ -28,6 +28,19 @@ export const deepgramVoiceOptions: Option[] = [
   { value: 'aura-2-zeus-en', label: 'Aura 2 Zeus' },
 ];
 
+export const elevenLabsVoiceOptions: Option[] = [
+  { value: 'JBFqnCBsd6RMkjVDRZzb', label: 'George' },
+  { value: '21m00Tcm4TlvDq8ikWAM', label: 'Rachel' },
+  { value: 'AZnzlk1XvdvUeBnXmlld', label: 'Domi' },
+  { value: 'EXAVITQu4vr4xnSDxMaL', label: 'Bella' },
+  { value: 'ErXwobaYiN019PkySvjV', label: 'Antoni' },
+  { value: 'MF3mGyEYCl7XYWbV9V6O', label: 'Elli' },
+  { value: 'TxGEqnHWrfWFTfGW9XjX', label: 'Josh' },
+  { value: 'VR6AewLTigWG4xSOukaG', label: 'Arnold' },
+  { value: 'pNInz6obpgDQGcFmaJgB', label: 'Adam' },
+  { value: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam' },
+];
+
 const sttModelOptionsByProvider: Record<Provider, Option[]> = {
   deepgram: [
     { value: 'nova-3', label: 'Nova-3' },
@@ -49,6 +62,7 @@ const defaultTtsVoiceByProvider: Record<Provider, string> = {
 };
 
 const supportedDeepgramVoices = new Set(deepgramVoiceOptions.map((option) => option.value));
+const supportedElevenLabsVoices = new Set(elevenLabsVoiceOptions.map((option) => option.value));
 
 export function getSttModelOptions(provider: string): Option[] {
   return sttModelOptionsByProvider[normalizeProvider(provider)] ?? sttModelOptionsByProvider.deepgram;
@@ -63,21 +77,19 @@ export function getDefaultTtsVoice(provider: string): string {
 }
 
 export function getTtsVoiceOptions(provider: string): Option[] {
-  return normalizeProvider(provider) === 'deepgram' ? deepgramVoiceOptions : [];
+  return normalizeProvider(provider) === 'elevenlabs' ? elevenLabsVoiceOptions : deepgramVoiceOptions;
 }
 
 export function usesTtsVoiceSelect(provider: string): boolean {
-  return normalizeProvider(provider) === 'deepgram';
+  return true;
 }
 
 export function getTtsVoiceFieldLabel(provider: string): string {
-  return normalizeProvider(provider) === 'elevenlabs' ? 'ElevenLabs voice ID' : 'Voice';
+  return 'Voice';
 }
 
 export function getTtsVoicePlaceholder(provider: string): string {
-  return normalizeProvider(provider) === 'elevenlabs'
-    ? 'Enter ElevenLabs voice ID'
-    : '';
+  return '';
 }
 
 export function normalizeSpeechConfig(config: AgentConfig): AgentConfig {
@@ -99,7 +111,7 @@ export function normalizeSpeechConfig(config: AgentConfig): AgentConfig {
     if (!supportedDeepgramVoices.has(ttsVoice)) {
       ttsVoice = getDefaultTtsVoice('deepgram');
     }
-  } else if (!ttsVoice.trim()) {
+  } else if (!supportedElevenLabsVoices.has(ttsVoice)) {
     ttsVoice = getDefaultTtsVoice('elevenlabs');
   }
 
