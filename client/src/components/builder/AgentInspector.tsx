@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { Plus, Trash2, X } from 'lucide-react';
+import { Pause, Play, Plus, Trash2, X } from 'lucide-react';
 
 import {
   getDefaultSttModel,
@@ -14,7 +14,7 @@ import {
   ttsProviderOptions,
   usesTtsVoiceSelect,
 } from '../../data/providerOptions';
-import type { AgentConfig } from '../../lib/types';
+import type { AgentConfig, ProviderCatalog } from '../../lib/types';
 import { Button } from '../ui/Button';
 
 interface AgentInspectorProps {
@@ -22,9 +22,18 @@ interface AgentInspectorProps {
   onChange: (config: AgentConfig) => void;
   onSave: () => void;
   onClose: () => void;
+  deepgramCatalog: ProviderCatalog | null;
+  elevenLabsCatalog: ProviderCatalog | null;
 }
 
-export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspectorProps) {
+export function AgentInspector({
+  config,
+  onChange,
+  onSave,
+  onClose,
+  deepgramCatalog,
+  elevenLabsCatalog,
+}: AgentInspectorProps) {
   const update = <K extends keyof AgentConfig>(key: K, value: AgentConfig[K]) => onChange({ ...config, [key]: value });
   const updateSttProvider = (provider: string) =>
     onChange({ ...config, stt_provider: provider, stt_model: getDefaultSttModel(provider) });
@@ -33,9 +42,58 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
   const addTool = () => update('tools', [...config.tools, { name: 'new_tool', description: '', enabled: true }]);
   const updateTool = (index: number, name: string) => update('tools', config.tools.map((tool, i) => i === index ? { ...tool, name } : tool));
   const removeTool = (index: number) => update('tools', config.tools.filter((_, i) => i !== index));
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const sttModelOptions = getSttModelOptions(config.stt_provider);
-  const ttsVoiceOptions = getTtsVoiceOptions(config.tts_provider);
+  const activeCatalog = config.tts_provider === 'elevenlabs' ? elevenLabsCatalog : deepgramCatalog;
+  const ttsVoiceOptions = useMemo(() => {
+    if (activeCatalog?.tts?.length) {
+      return activeCatalog.tts.map((voice) => ({
+        value: voice.voice_id,
+        label: voice.accent ? `${voice.label} - ${voice.accent}` : voice.label,
+      }));
+    }
+    return getTtsVoiceOptions(config.tts_provider);
+  }, [activeCatalog, config.tts_provider]);
   const ttsVoiceUsesSelect = usesTtsVoiceSelect(config.tts_provider);
+  const selectedVoice = activeCatalog?.tts.find((voice) => voice.voice_id === config.tts_voice) ?? null;
+
+  useEffect(() => {
+    const audio = previewAudioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    setIsPlaying(false);
+  }, [config.tts_voice]);
+
+  useEffect(() => {
+    return () => {
+      const audio = previewAudioRef.current;
+      if (!audio) return;
+      audio.pause();
+      audio.src = '';
+    };
+  }, []);
+
+  const togglePreview = () => {
+    if (!selectedVoice?.sample) return;
+    let audio = previewAudioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.onended = () => setIsPlaying(false);
+      audio.onpause = () => setIsPlaying(false);
+      audio.onplay = () => setIsPlaying(true);
+      previewAudioRef.current = audio;
+    }
+    if (isPlaying) {
+      audio.pause();
+      return;
+    }
+    if (audio.src !== selectedVoice.sample) {
+      audio.src = selectedVoice.sample;
+    }
+    void audio.play();
+  };
 
   return (
     <aside className="flex w-[360px] shrink-0 flex-col border-l border-line bg-white">
@@ -63,7 +121,28 @@ export function AgentInspector({ config, onChange, onSave, onClose }: AgentInspe
           </Field>
           <Field label={getTtsVoiceFieldLabel(config.tts_provider)}>
             {ttsVoiceUsesSelect ? (
-              <Select value={config.tts_voice} options={ttsVoiceOptions} onChange={(value) => update('tts_voice', value)} />
+              <div className="mt-1 flex items-center gap-1.5">
+                <select
+                  className="min-w-0 flex-1 truncate rounded-md border border-line bg-white px-2.5 py-2 text-xs"
+                  value={config.tts_voice}
+                  onChange={(event) => update('tts_voice', event.target.value)}
+                >
+                  {ttsVoiceOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  title={isPlaying ? 'Pause preview' : 'Preview voice'}
+                  disabled={!selectedVoice?.sample}
+                  onClick={togglePreview}
+                  className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md border border-line text-faint hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {isPlaying ? <Pause size={13} /> : <Play size={13} />}
+                </button>
+              </div>
             ) : (
               <input
                 value={config.tts_voice}

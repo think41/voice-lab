@@ -1,4 +1,12 @@
-import type { AgentConfig, AgentRecord, AudioEvaluationRecord, RunRecord, TestSession, TextTurn } from './types';
+import type {
+  AgentConfig,
+  AgentRecord,
+  AudioEvaluationRecord,
+  ProviderCatalog,
+  RunRecord,
+  TestSession,
+  TextTurn,
+} from './types';
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
 
@@ -46,6 +54,14 @@ export async function listAudioEvaluations(
   signal?: AbortSignal,
 ): Promise<AudioEvaluationRecord[]> {
   return request<AudioEvaluationRecord[]>(`/api/audio-evaluations/agent/${agentId}`, { signal });
+}
+
+export async function getDeepgramCatalog(signal?: AbortSignal): Promise<ProviderCatalog> {
+  return request<ProviderCatalog>('/api/providers/deepgram/catalog', { signal });
+}
+
+export async function getElevenLabsCatalog(signal?: AbortSignal): Promise<ProviderCatalog> {
+  return request<ProviderCatalog>('/api/providers/elevenlabs/catalog', { signal });
 }
 
 export async function createTestSession(

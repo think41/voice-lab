@@ -66,6 +66,18 @@ export interface AudioProviderMetrics {
   latency_p95_ms: number;
 }
 
+export interface TtsVoiceOption {
+  voice_id: string;
+  label: string;
+  provider: 'deepgram' | 'elevenlabs';
+  sample: string | null;
+  accent: string | null;
+}
+
+export interface ProviderCatalog {
+  tts: TtsVoiceOption[];
+}
+
 export interface AudioEvaluationRecord {
   session_id: string;
   run_id: string;

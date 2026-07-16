@@ -1,0 +1,12 @@
+{
+  "tts": [
+    {"voice_id": "aura-asteria-en", "label": "Aura Asteria", "provider": "deepgram", "sample": null, "accent": "American"},
+    {"voice_id": "aura-luna-en", "label": "Aura Luna", "provider": "deepgram", "sample": null, "accent": "American"},
+    {"voice_id": "aura-stella-en", "label": "Aura Stella", "provider": "deepgram", "sample": null, "accent": "American"},
+    {"voice_id": "aura-athena-en", "label": "Aura Athena", "provider": "deepgram", "sample": null, "accent": "British"},
+    {"voice_id": "aura-2-thalia-en", "label": "Aura 2 Thalia", "provider": "deepgram", "sample": null, "accent": "American"},
+    {"voice_id": "aura-2-orion-en", "label": "Aura 2 Orion", "provider": "deepgram", "sample": null, "accent": "American"},
+    {"voice_id": "aura-2-vesta-en", "label": "Aura 2 Vesta", "provider": "deepgram", "sample": null, "accent": "American"},
+    {"voice_id": "aura-2-zeus-en", "label": "Aura 2 Zeus", "provider": "deepgram", "sample": null, "accent": "American"}
+  ]
+}
