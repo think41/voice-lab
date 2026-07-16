@@ -1,9 +1,10 @@
 import json
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 from uuid import uuid4
 
+from deepgram.listen.v1.types import ListenV1Metadata, ListenV1Results
 from fastapi import WebSocket
 from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
@@ -20,14 +21,14 @@ from pipecat.frames.frames import (
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.processors.audio.audio_buffer_processor import AudioBufferProcessor
+from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.serializers.base_serializer import FrameSerializer
-from pipecat.services.settings import LLMSettings
 from pipecat.services.deepgram.stt import DeepgramSTTService
 from pipecat.services.deepgram.tts import DeepgramTTSService
 from pipecat.services.elevenlabs.stt import CommitStrategy, ElevenLabsRealtimeSTTService
 from pipecat.services.elevenlabs.tts import ElevenLabsTTSService
+from pipecat.services.settings import LLMSettings
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat_adk import AdkLLMService, SessionParams, VqlTTSMixin
 from pipecat_adk.frames import (
@@ -35,15 +36,15 @@ from pipecat_adk.frames import (
     VqlLLMFullResponseStartFrame,
     VqlLLMTextFrame,
 )
-from deepgram.listen.v1.types import ListenV1Metadata, ListenV1Results
 
 from app.core.config import get_settings
-from app.schemas.agent import AgentConfig, DEFAULT_TTS_MODEL_BY_PROVIDER
+from app.schemas.agent import DEFAULT_TTS_MODEL_BY_PROVIDER, AgentConfig
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 from app.services.pipecat_adk_runtime import PipecatAdkRuntime
 from app.services.pipeline_metrics import (
     MetricsSink,
 )
+from app.services.pricing import compute_cost
 from app.services.stt_evaluation_service import SttEvaluationSession
 
 logger = logging.getLogger("uvicorn.error")
@@ -140,7 +141,37 @@ class ProviderRequestTraceMixin:
                 return
 
 
-class InstrumentedDeepgramSTTService(ProviderRequestTraceMixin, DeepgramSTTService):
+class SttUsageMeterMixin:
+    """Meter raw audio bytes actually sent to the STT provider.
+
+    `STTService.process_audio_frame` applies the mute/reconnect/empty-frame
+    guards and only then calls `run_stt`, so every byte counted here is audio
+    the provider bills for (silence included). VAD turn audio undercounts.
+    """
+
+    _streamed_audio_bytes: int = 0
+    _provider_reported_audio_seconds: float = 0.0
+
+    async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
+        self._streamed_audio_bytes += len(audio)
+        async for frame in super().run_stt(audio):
+            yield frame
+
+    @property
+    def streamed_audio_seconds(self) -> float:
+        if not self.sample_rate:
+            return 0.0
+        # 16-bit mono PCM: 2 bytes per sample.
+        return self._streamed_audio_bytes / (self.sample_rate * 2)
+
+    @property
+    def provider_reported_audio_seconds(self) -> float | None:
+        return self._provider_reported_audio_seconds or None
+
+
+class InstrumentedDeepgramSTTService(
+    SttUsageMeterMixin, ProviderRequestTraceMixin, DeepgramSTTService
+):
     def __init__(
         self, *, record_trace: TraceRecorder, provider_model: str, run_tag: str, **kwargs: Any
     ) -> None:
@@ -158,13 +189,46 @@ class InstrumentedDeepgramSTTService(ProviderRequestTraceMixin, DeepgramSTTServi
     async def _on_message(self, message: Any) -> None:
         if isinstance(message, ListenV1Metadata):
             await self._record_provider_request(message.request_id)
+            # Deepgram reports processed audio duration per connection on
+            # close; accumulate across reconnects for meter calibration.
+            duration = getattr(message, "duration", None)
+            if duration:
+                self._provider_reported_audio_seconds += float(duration)
         elif isinstance(message, ListenV1Results):
             metadata = getattr(message, "metadata", None)
             await self._record_provider_request(getattr(metadata, "request_id", None))
         await super()._on_message(message)
 
 
-class AdkDeepgramTTSService(ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSService):
+class TtsUsageMeterMixin:
+    """Meter characters actually sent to the TTS provider.
+
+    `run_tts` receives the final prepared text (post text-transforms) and
+    immediately sends it to the provider (`Speak` message for Deepgram,
+    context text for ElevenLabs). Providers bill on characters sent —
+    including text later cleared/closed by an interruption — so this counts
+    the billed quantity. Transcript-derived counts undercount whenever the
+    user interrupts, and Pipecat's built-in `TTSUsageMetricsData` metric is
+    never emitted by the Deepgram websocket service and is dropped on
+    interruption, so we count at the send seam ourselves (same approach as
+    `SttUsageMeterMixin`).
+    """
+
+    _sent_characters: int = 0
+
+    async def run_tts(self, text: str, context_id: str) -> AsyncGenerator[Frame | None, None]:
+        self._sent_characters += len(text)
+        async for frame in super().run_tts(text, context_id):
+            yield frame
+
+    @property
+    def sent_characters(self) -> int:
+        return self._sent_characters
+
+
+class AdkDeepgramTTSService(
+    TtsUsageMeterMixin, ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSService
+):
     def __init__(
         self,
         *,
@@ -193,7 +257,9 @@ class AdkDeepgramTTSService(ProviderRequestTraceMixin, VqlTTSMixin, DeepgramTTSS
         await self._record_provider_request_from_headers(response_headers, "dg-request-id")
 
 
-class InstrumentedElevenLabsSTTService(ProviderRequestTraceMixin, ElevenLabsRealtimeSTTService):
+class InstrumentedElevenLabsSTTService(
+    SttUsageMeterMixin, ProviderRequestTraceMixin, ElevenLabsRealtimeSTTService
+):
     def __init__(
         self, *, record_trace: TraceRecorder, provider_model: str, run_tag: str, **kwargs: Any
     ) -> None:
@@ -224,7 +290,9 @@ class InstrumentedElevenLabsSTTService(ProviderRequestTraceMixin, ElevenLabsReal
         await super()._process_response(data)
 
 
-class AdkElevenLabsTTSService(ProviderRequestTraceMixin, VqlTTSMixin, ElevenLabsTTSService):
+class AdkElevenLabsTTSService(
+    TtsUsageMeterMixin, ProviderRequestTraceMixin, VqlTTSMixin, ElevenLabsTTSService
+):
     def __init__(
         self,
         *,
@@ -609,5 +677,28 @@ class PipecatStreamingRuntime:
         try:
             await runner.run(task)
         finally:
-            await stt_evaluation.finalize()
+            try:
+                stt_usage_payload = {
+                    "provider": config.stt_provider,
+                    "model": config.stt_model,
+                    "streamed_seconds": round(stt.streamed_audio_seconds, 3),
+                    "speech_seconds": stt_evaluation.session_duration_sec,
+                    "provider_reported_seconds": stt.provider_reported_audio_seconds,
+                }
+                stt_usage_payload["cost_usd"] = float(compute_cost("usage.stt", stt_usage_payload))
+                await record_trace(
+                    "usage.stt",
+                    stt_usage_payload,
+                )
+                await record_trace(
+                    "usage.tts",
+                    {
+                        "provider": config.tts_provider,
+                        "model": metrics_tts_model,
+                        "voice": config.tts_voice,
+                        "sent_characters": tts.sent_characters,
+                    },
+                )
+            finally:
+                await stt_evaluation.finalize(tts_sent_characters=tts.sent_characters)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)

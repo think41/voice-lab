@@ -117,6 +117,7 @@ export function AudioView({ agent, records }: AudioViewProps) {
               </label>
             </div>
 
+            <SectionHeader label="STT" />
             <div className="mb-5 grid grid-cols-4 gap-4">
               <MetricCard label="Turns" value={String(selectedRecord.turn_count)} sub="captured user turns" />
               <MetricCard label="STT Duration" value={formatDuration(selectedRecord.session_stt_duration_sec)} sub="session STT duration" />
@@ -151,56 +152,108 @@ export function AudioView({ agent, records }: AudioViewProps) {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
-              <div className="mb-4">
-                <h3 className="text-sm font-semibold text-text">Cost comparision across models</h3>
-                <p className="mt-1 text-xs text-faint">Computed from this audio session’s total user-turn duration. No extra provider calls required.</p>
-              </div>
-              {(() => {
-                const allEntries = Object.entries(selectedRecord.session_model_costs_usd).flatMap(([provider, models]) =>
-                  Object.entries(models).map(([model, cost]) => ({ provider, model, cost })),
-                );
-                const rankedAll = [...allEntries].sort((a, b) => a.cost - b.cost);
-                const globalLowest = rankedAll[0] ?? null;
-                const globalHighest = rankedAll[rankedAll.length - 1] ?? null;
-                const hasSpread = rankedAll.length > 1;
-                return (
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {Object.entries(selectedRecord.session_model_costs_usd).map(([provider, models]) => (
-                      <div key={provider} className="rounded-xl border border-line bg-off p-4">
-                        <div className="mb-3 text-sm font-semibold text-text">{titleCase(provider)} STT</div>
-                        <div className="space-y-2 text-xs">
-                          {Object.entries(models).map(([model, cost]) => {
-                            const isHighest = hasSpread && globalHighest?.provider === provider && globalHighest?.model === model;
-                            const isLowest = hasSpread && globalLowest?.provider === provider && globalLowest?.model === model;
-                            return (
-                              <div key={model} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
-                                <div className="min-w-0">
-                                  <div className="font-medium text-muted">{model}</div>
-                                  <div className="mt-1 flex gap-1">
-                                    {isHighest ? (
-                                      <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Highest</span>
-                                    ) : null}
-                                    {isLowest ? (
-                                      <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lowest</span>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                <span className="font-mono text-text">~${cost.toFixed(6)}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+            <CostComparisonGrid
+              title="Cost comparision across models"
+              subtitle="Computed from this audio session’s total user-turn duration. No extra provider calls required."
+              costs={selectedRecord.session_model_costs_usd}
+              providerSuffix="STT"
+            />
+
+            {selectedRecord.session_tts_sent_characters != null ||
+            (selectedRecord.session_tts_model_costs_usd &&
+              Object.keys(selectedRecord.session_tts_model_costs_usd).length > 0) ? (
+              <>
+                <div className="my-8 border-t border-line" />
+                <SectionHeader label="TTS" />
+                {selectedRecord.session_tts_sent_characters != null ? (
+                  <div className="mb-5 grid grid-cols-4 gap-4">
+                    <MetricCard
+                      label="TTS Characters"
+                      value={selectedRecord.session_tts_sent_characters.toLocaleString()}
+                      sub="characters sent to provider"
+                    />
                   </div>
-                );
-              })()}
-            </div>
+                ) : null}
+                {selectedRecord.session_tts_model_costs_usd &&
+                Object.keys(selectedRecord.session_tts_model_costs_usd).length > 0 ? (
+                  <CostComparisonGrid
+                    title="TTS cost comparison across models"
+                    subtitle="Computed from characters sent to the TTS provider this session. Cross-provider figures are estimates — normalization differs per provider."
+                    costs={selectedRecord.session_tts_model_costs_usd}
+                    providerSuffix="TTS"
+                  />
+                ) : null}
+              </>
+            ) : null}
           </>
         ) : null}
       </section>
     </div>
+  );
+}
+
+function CostComparisonGrid({
+  title,
+  subtitle,
+  costs,
+  providerSuffix,
+}: {
+  title: string;
+  subtitle: string;
+  costs: Record<string, Record<string, number>>;
+  providerSuffix: string;
+}) {
+  const allEntries = Object.entries(costs).flatMap(([provider, models]) =>
+    Object.entries(models).map(([model, cost]) => ({ provider, model, cost })),
+  );
+  const rankedAll = [...allEntries].sort((a, b) => a.cost - b.cost);
+  const globalLowest = rankedAll[0] ?? null;
+  const globalHighest = rankedAll[rankedAll.length - 1] ?? null;
+  const hasSpread = rankedAll.length > 1;
+  return (
+    <div className="rounded-2xl border border-line bg-white p-5 shadow-sm">
+      <div className="mb-4">
+        <h3 className="text-sm font-semibold text-text">{title}</h3>
+        <p className="mt-1 text-xs text-faint">{subtitle}</p>
+      </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        {Object.entries(costs).map(([provider, models]) => (
+          <div key={provider} className="rounded-xl border border-line bg-off p-4">
+            <div className="mb-3 text-sm font-semibold text-text">
+              {titleCase(provider)} {providerSuffix}
+            </div>
+            <div className="space-y-2 text-xs">
+              {Object.entries(models).map(([model, cost]) => {
+                const isHighest = hasSpread && globalHighest?.provider === provider && globalHighest?.model === model;
+                const isLowest = hasSpread && globalLowest?.provider === provider && globalLowest?.model === model;
+                return (
+                  <div key={model} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-muted">{model}</div>
+                      <div className="mt-1 flex gap-1">
+                        {isHighest ? (
+                          <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">Highest</span>
+                        ) : null}
+                        {isLowest ? (
+                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Lowest</span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <span className="font-mono text-text">~${cost.toFixed(6)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-faint">{label}</h3>
   );
 }
 

@@ -73,8 +73,12 @@ export interface AudioEvaluationRecord {
   created_at: string;
   turn_count: number;
   session_stt_duration_sec: number;
+  streamed_seconds: number;
+  stt_cost_usd: number | null;
   session_model_costs_usd: Record<string, Record<string, number>>;
   provider_session_metrics: Record<string, AudioProviderMetrics>;
   file_paths: string[];
   evaluate_mode: boolean;
+  session_tts_sent_characters?: number | null;
+  session_tts_model_costs_usd?: Record<string, Record<string, number>>;
 }
