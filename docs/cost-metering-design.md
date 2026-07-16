@@ -24,7 +24,7 @@ N providers is pure arithmetic against a rate table. The billing units are:
 | Service | Billing unit | Comparable across providers? |
 |---------|-------------|------------------------------|
 | STT | Seconds of **audio streamed** to the provider (silence included) | Yes — same audio would be streamed to any provider |
-| TTS | **Characters** of input text | Yes — exactly, the text is identical regardless of provider |
+| TTS | Characters **sent** to the provider (including text cleared on interruption, see §6) | Yes — the pipeline sends the same text to any provider; interruption timing, not the provider, decides what gets sent |
 | LLM | Input/output **tokens** | Approximately (tokenizers differ) — out of scope for now |
 
 A direct corollary: **do not run shadow sessions on other providers to learn
@@ -101,8 +101,9 @@ Emit immutable usage facts alongside existing transcript events. **No prices
 anywhere in these events** — prices change, facts don't.
 
 - `usage.stt` → `{ provider, model, streamed_seconds, speech_seconds }`
-- `usage.tts` → `{ processor, model, characters }` (one per synthesized
-  utterance; sum per run at aggregation time)
+- `usage.tts` → `{ provider, model, voice, sent_characters }`
+  (one per session, emitted at teardown like `usage.stt`; see §6.
+  `heard_characters` is a future analytics addition)
 - `usage.llm` → `{ model, input_tokens, output_tokens }` (future)
 
 ### Layer 2 — One pricing catalog, server-side
@@ -228,47 +229,120 @@ revisit once metering is solid.)
 
 ---
 
-## 6. TTS metering: Pipecat already does this — it's switched off
+## 6. TTS metering: bill = characters *sent*, and Pipecat's built-in metric can't measure that
 
-Pipecat has a built-in TTS usage metric. Every TTS service calls
-`start_tts_usage_metrics(text)` after synthesizing, emitting a `MetricsFrame`
-carrying `TTSUsageMetricsData(value=<character count>)`. Verified in the
-installed package for both providers we use:
+*(Rewritten 2026-07-16 — the earlier version of this section was wrong on two
+counts, marked below.)*
 
-- Deepgram: `pipecat/services/deepgram/tts.py:497`
-- ElevenLabs: `pipecat/services/elevenlabs/tts.py:1026`
+### 6.1 How Deepgram actually bills
 
-It is gated behind the flag we currently disable:
+- Aura is billed per input character: Aura-2 $0.030/1k chars pay-as-you-go
+  ($0.027 Growth), Aura-1 $0.015/1k.
+- We use the **websocket** TTS API. Deepgram counts characters **sent to the
+  websocket** — its own throughput limit is documented as "measured by the
+  number of characters sent to the websocket." Nothing in the `Clear` docs
+  promises a refund for buffered text cleared before synthesis; assume
+  **sent = billed** until reconciled against the console (§6.4).
+- **Interruption effect:** Pipecat pushes each sentence to the socket as soon
+  as the LLM streams it — usually several sentences ahead of audio playback.
+  On user interruption, Pipecat sends `Clear`
+  (`pipecat/services/deepgram/tts.py:274`); audio stops, but every character
+  already submitted via `Speak` messages was sent and is billed. So
+  **Deepgram's bill > characters the user actually heard**, and > any count
+  derived from the spoken transcript. Same lesson as STT: the billing unit is
+  what crosses the wire (characters sent), not what the user experiences
+  (characters heard).
+
+### 6.2 Why `enable_usage_metrics=True` is NOT sufficient (correction)
+
+The earlier draft said flipping the flag suffices. Verified against the
+installed package, it does not:
+
+- Our `AdkDeepgramTTSService` extends the **websocket** `DeepgramTTSService`,
+  whose `run_tts` never calls `start_tts_usage_metrics`. The call the earlier
+  draft cited (`deepgram/tts.py:497`) is in `DeepgramHttpTTSService`, which we
+  don't use. In our default SENTENCE aggregation mode, Deepgram WS TTS would
+  report **zero** usage.
+- The base-class fallback (`_streamed_text` accumulated and emitted at
+  `LLMFullResponseEndFrame`, `tts_service.py:723-726`) only operates in TOKEN
+  aggregation mode — and even there, `_handle_interruption`
+  (`tts_service.py:902-910`) wipes `_streamed_text` **without emitting**, so
+  interrupted turns are never counted. Interrupted turns are exactly where
+  billing diverges from the transcript, so this is the worst possible gap.
+- ElevenLabs WS `run_tts` *does* call `start_tts_usage_metrics(text)` right
+  after sending (`elevenlabs/tts.py:1026`), i.e. the built-in metric is
+  per-provider inconsistent: roughly right for ElevenLabs, absent for
+  Deepgram.
+
+### 6.3 The fix: meter at the send seam (mirror of `SttUsageMeterMixin`)
+
+Count characters ourselves at the exact point text leaves for the provider —
+`run_tts(text, context_id)`, which receives the final prepared/transformed
+text (post `normalize_tts_text`) and immediately sends it (`Speak` for
+Deepgram, `_send_text` for ElevenLabs):
 
 ```python
-# pipecat_streaming_runtime.py:565
-enable_usage_metrics=False,   # ← flip to True
+class TtsUsageMeterMixin:
+    """Count characters at the run_tts seam — the exact text sent to the provider."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._sent_characters = 0
+
+    async def run_tts(self, text: str, context_id: str):
+        self._sent_characters += len(text)
+        async for frame in super().run_tts(text, context_id):
+            yield frame
 ```
 
-Our `MetricsSink` (`server/app/services/pipeline_metrics.py`) already sits at
-the pipeline tail and iterates `MetricsFrame` items for TTFB, so TTS metering
-is a small addition:
+Apply to both `AdkDeepgramTTSService` and `AdkElevenLabsTTSService`. At
+session teardown (next to `usage.stt`), emit:
 
-```python
-from pipecat.metrics.metrics import TTFBMetricsData, TTSUsageMetricsData
+- `usage.tts` → `{ provider, model, voice, sent_characters }`
+  - `sent_characters` — billing truth.
+  - `heard_characters` (future, analytics) — characters actually played to
+    the user (derivable from the `agent.text` transcript events). The delta
+    quantifies interruption waste — worth surfacing in the UI as its own
+    insight ("23% of TTS spend was interrupted audio").
 
-# in MetricsSink._handle_metric:
-elif isinstance(item, TTSUsageMetricsData):
-    await self._record_trace(
-        "usage.tts",
-        {"processor": item.processor, "model": item.model, "characters": int(item.value)},
-    )
-```
+### 6.4 Calibration
 
-Since TTS providers bill on input characters and the text is identical
-regardless of provider, the cross-provider TTS comparison is essentially
-exact (modulo per-provider rounding/minimum rules from the pricing catalog).
+- **Deepgram:** the Management/Usage API reports per-request character counts;
+  the console usage page shows the same. Run one deliberately-interrupted
+  session, compare our `sent_characters` against Deepgram's reported count —
+  this both validates the meter and settles the cleared-text question
+  empirically (same role `ListenV1Metadata.duration` plays for STT).
+- **ElevenLabs:** the subscription/user API exposes a cumulative character
+  counter; snapshot before/after a session.
 
-**Caveat:** `enable_usage_metrics=True` is pipeline-wide. If the pipecat-adk
-LLM bridge emits `LLMUsageMetricsData` (token counts), those frames will also
-reach `MetricsSink` — handle or ignore them explicitly rather than letting
-them fall through silently. If the bridge doesn't emit them, LLM tokens can
-later be read from ADK/Gemini response `usage_metadata`.
+### 6.5 Cross-provider comparison remains valid
+
+`sent_characters` is **pipeline-determined** (LLM sentence pacing +
+interruption timing), not provider-determined — the same conversation with
+the same interruptions pushes the same text to whichever TTS service sits in
+the pipeline, and both Deepgram and ElevenLabs bill on characters received.
+So `sent_characters × rate` extrapolates fairly. Catalog detail: ElevenLabs
+bills in credits with per-model multipliers (e.g. Flash v2.5 ≈ 0.5
+credits/char vs Multilingual v2 at 1 credit/char) — encode as model-specific
+rates, and label its effective $/char from a subscription tier explicitly,
+since ElevenLabs pricing is plan-based rather than pure pay-as-you-go.
+
+**Per-provider interruption semantics differ — in the catalog, not the
+meter.** ElevenLabs' stated policy is that credits are deducted on
+*successful audio generation* (failed requests aren't charged), and on
+interruption Pipecat sends `close_context` (`elevenlabs/tts.py:843-845`), so
+text buffered but never synthesized *may* not be billed — unlike Deepgram,
+where we must assume sent = billed. Neither vendor documents the
+interrupted-buffer case precisely, and since ElevenLabs synthesizes eagerly
+per chunk, sent ≈ generated in practice. Treat `sent_characters` as exact for
+Deepgram and as a tight upper bound for ElevenLabs; per-provider calibration
+(§6.4) is what turns these assumptions into measured facts. The meter itself
+never changes per provider — one `TtsUsageMeterMixin` on the shared `run_tts`
+seam covers every Pipecat TTS service, current and future.
+
+**Caveat (unchanged):** if we also flip `enable_usage_metrics=True` for other
+reasons, `LLMUsageMetricsData` frames may reach `MetricsSink` — handle or
+ignore them explicitly. LLM tokens can otherwise be read from ADK/Gemini
+response `usage_metadata`.
 
 ---
 
@@ -282,9 +356,11 @@ later be read from ADK/Gemini response `usage_metadata`.
    trace event (streamed + speech + provider-reported seconds) is emitted at
    session teardown; Deepgram metadata `duration` is accumulated for
    calibration. Tests in `server/tests/test_stt_usage_meter.py`.
-3. **TTS metering** — flip `enable_usage_metrics=True`; add
-   `TTSUsageMetricsData` branch to `MetricsSink` emitting `usage.tts`;
-   explicitly handle/ignore `LLMUsageMetricsData`.
+3. **TTS metering** — `TtsUsageMeterMixin` counting `len(text)` in `run_tts`
+   on both instrumented TTS subclasses (do NOT rely on
+   `enable_usage_metrics` — see §6.2); emit `usage.tts` with
+   `sent_characters` (+ optional `heard_characters`) at session teardown;
+   calibrate one interrupted session against Deepgram console usage.
 4. **Aggregation** — at run close, aggregate `usage.*` events → compute
    actual + hypothetical costs with rate snapshots → store in
    `runs.summary` (or `run_costs` table). Stop treating `metrics.jsonl` as
