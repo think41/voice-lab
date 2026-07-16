@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -35,6 +35,8 @@ class AudioEvaluationRead(BaseModel):
     provider_session_metrics: dict[str, AudioProviderMetricsRead]
     file_paths: list[str]
     evaluate_mode: bool
+    session_tts_sent_characters: int | None = None
+    session_tts_model_costs_usd: dict[str, dict[str, float]] = Field(default_factory=dict)
 
 
 @router.get("/agent/{agent_id}", response_model=list[AudioEvaluationRead])
@@ -63,6 +65,8 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
                 provider_session_metrics=payload["provider_session_metrics"],
                 file_paths=payload["file_paths"],
                 evaluate_mode=payload["evaluate_mode"],
+                session_tts_sent_characters=payload["session_tts_sent_characters"],
+                session_tts_model_costs_usd=payload["session_tts_model_costs_usd"],
             )
         )
     return records
@@ -95,4 +99,10 @@ def _load_metrics_summary(metrics_path: Path) -> dict[str, Any] | None:
         "session_model_costs_usd": session_summary.get("session_model_costs_usd") or {},
         "provider_session_metrics": session_summary.get("provider_session_metrics") or {},
         "evaluate_mode": bool(session_summary.get("evaluate_mode", False)),
+        "session_tts_sent_characters": (
+            int(session_summary["session_tts_sent_characters"])
+            if session_summary.get("session_tts_sent_characters") is not None
+            else None
+        ),
+        "session_tts_model_costs_usd": session_summary.get("session_tts_model_costs_usd") or {},
     }

@@ -77,4 +77,6 @@ export interface AudioEvaluationRecord {
   provider_session_metrics: Record<string, AudioProviderMetrics>;
   file_paths: string[];
   evaluate_mode: boolean;
+  session_tts_sent_characters?: number | null;
+  session_tts_model_costs_usd?: Record<string, Record<string, number>>;
 }

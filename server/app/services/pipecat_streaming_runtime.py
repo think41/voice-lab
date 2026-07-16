@@ -697,5 +697,5 @@ class PipecatStreamingRuntime:
                     },
                 )
             finally:
-                await stt_evaluation.finalize()
+                await stt_evaluation.finalize(tts_sent_characters=tts.sent_characters)
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)
