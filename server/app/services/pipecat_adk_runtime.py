@@ -109,6 +109,9 @@ class PipecatAdkRuntime:
             name=self._normalize_agent_name(config.name),
             model=config.model,
             instruction=config.instruction,
+            generate_content_config=types.GenerateContentConfig(
+                temperature=config.temperature,
+            ),
             **agent_kwargs,
         )
         return App(name="voicelab", root_agent=agent, plugins=[AdkInterruptionPlugin()])

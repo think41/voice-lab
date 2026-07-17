@@ -75,3 +75,11 @@ def test_require_llm_api_key_passes_when_key_present(monkeypatch) -> None:
     settings = get_settings()
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")
     require_llm_api_key(AgentConfig(name="A", model="anthropic/claude-sonnet-5"))
+
+
+def test_build_adk_app_applies_temperature() -> None:
+    runtime = PipecatAdkRuntime()
+    app = runtime.build_adk_app(
+        AgentConfig(name="T", model="gemini-3.5-flash", temperature=0.9)
+    )
+    assert app.root_agent.generate_content_config.temperature == 0.9
