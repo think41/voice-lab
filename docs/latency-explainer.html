@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>STT &amp; TTS latency — how it's calculated</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #111827;
+      --muted: #4b5563;
+      --faint: #6b7280;
+      --line: #e5e7eb;
+      --off: #f9fafb;
+      --code-bg: #f3f4f6;
+      --accent: #2563eb;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    main {
+      max-width: 780px;
+      margin: 0 auto;
+      padding: 56px 24px 96px;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+    header .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 11px;
+      color: var(--faint);
+      font-weight: 600;
+    }
+    h1 {
+      font-size: 28px;
+      line-height: 1.25;
+      margin: 8px 0 8px;
+    }
+    header p.lede {
+      color: var(--muted);
+      margin: 0;
+    }
+    h2 {
+      font-size: 20px;
+      margin: 40px 0 8px;
+      border-top: 1px solid var(--line);
+      padding-top: 32px;
+    }
+    section:first-of-type h2 { border-top: none; padding-top: 0; }
+    h2 .sub {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--faint);
+      margin-top: 4px;
+    }
+    h3 {
+      font-size: 15px;
+      margin: 24px 0 6px;
+      color: var(--text);
+    }
+    p { margin: 12px 0; }
+    ul { padding-left: 22px; margin: 12px 0; }
+    li { margin: 6px 0; }
+    code {
+      background: var(--code-bg);
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+    pre {
+      background: var(--code-bg);
+      padding: 14px 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      line-height: 1.55;
+    }
+    pre code { background: none; padding: 0; }
+    .kv {
+      display: grid;
+      grid-template-columns: 110px 1fr;
+      gap: 4px 16px;
+      margin: 12px 0;
+    }
+    .kv dt {
+      color: var(--faint);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .kv dd {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+    }
+    blockquote {
+      margin: 16px 0;
+      padding: 14px 18px;
+      background: var(--off);
+      border-left: 3px solid var(--accent);
+      border-radius: 6px;
+      color: var(--text);
+    }
+    blockquote p { margin: 0; }
+    .callout {
+      background: var(--off);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      font-size: 14.5px;
+    }
+    .callout strong { display: block; margin-bottom: 4px; font-size: 13px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.06em; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">Voice-lab · engineering note</div>
+      <h1>How STT &amp; TTS latency is calculated</h1>
+      <p class="lede">
+        Two numbers, both measured <strong>server-side</strong> in the Pipecat pipeline using
+        <code>time.perf_counter()</code> — monotonic, high-resolution, the correct clock for
+        durations in Python. Browser clocks are never involved.
+      </p>
+    </header>
+
+    <section>
+      <h2>
+        STT latency
+        <span class="sub">"user speaking → transcript ready for the LLM"</span>
+      </h2>
+
+      <p>
+        Timed between two frames flowing through the pipeline, both observed by
+        <code>UserTranscriptBridge</code>, which sits right after the STT service:
+      </p>
+
+      <ul>
+        <li><strong>Start:</strong> <code>UserStartedSpeakingFrame</code> — Pipecat's VAD has decided the user is actually talking.</li>
+        <li><strong>Stop:</strong> the first non-empty final <code>TranscriptionFrame</code> — the transcript about to be handed to the LLM.</li>
+      </ul>
+
+      <pre><code>latency_ms = (t_stop - t_start) * 1000</code></pre>
+
+      <div class="callout">
+        <strong>Includes</strong>
+        Network round-trip to the STT provider, provider compute, endpointing
+        (the provider deciding the user is done).
+      </div>
+      <div class="callout">
+        <strong>Excludes</strong>
+        The mic-to-server upload of the audio — start fires on audio that's already arrived.
+      </div>
+    </section>
+
+    <section>
+      <h2>
+        TTS latency
+        <span class="sub">"text handed to provider → first audio out" (TTFB)</span>
+      </h2>
+
+      <ul>
+        <li>
+          <strong>Start:</strong> inside <code>TtsUsageMeterMixin.run_tts(text, context_id)</code> —
+          the exact seam where Pipecat hands text to the provider (a Deepgram <code>Speak</code>
+          message or an ElevenLabs context text). Only stamped if a timer isn't already running,
+          so multi-chunk streamed LLM text doesn't reset the clock.
+        </li>
+        <li>
+          <strong>Stop:</strong> the first <code>OutputAudioRawFrame</code> observed downstream
+          of the TTS service, caught by a small <code>TtsLatencyBridge</code> FrameProcessor
+          placed right after <code>tts</code> in the pipeline.
+        </li>
+      </ul>
+
+      <pre><code>latency_ms = (t_stop - t_start) * 1000</code></pre>
+
+      <p>
+        This <em>is</em> TTFB — first byte back from the provider. And because we stream
+        <strong>raw linear16 PCM</strong> to the browser (no WAV / MP3 / Ogg container
+        wrapping), the first byte is an audible audio sample. So TTFB and TTFA
+        (time-to-first-audio) coincide — the number is honest, unlike TTFB on
+        container-wrapped formats where the first bytes are just headers.
+      </p>
+
+      <div class="callout">
+        <strong>Includes</strong>
+        Network round-trip to the TTS provider and provider synthesis time up to
+        the first audio chunk.
+      </div>
+      <div class="callout">
+        <strong>Excludes</strong>
+        Browser-side jitter buffer and audio decode.
+      </div>
+    </section>
+
+    <section>
+      <h2>
+        Aggregation
+        <span class="sub">per-turn samples → session numbers</span>
+      </h2>
+
+      <p>
+        Each STT and TTS service holds a per-instance list of samples (one entry per
+        utterance for STT; one per <code>run_tts</code> invocation for TTS). Each
+        per-turn measurement is also emitted as a trace event
+        (<code>latency.stt.turn</code> / <code>latency.tts.turn</code>) with
+        <code>{provider, model, latency_ms, turn_index}</code>.
+      </p>
+
+      <p>At session close, <code>_summarize_latency()</code> collapses the samples into:</p>
+
+      <ul>
+        <li><strong>median</strong> — plain nearest-rank median.</li>
+        <li>
+          <strong>p95</strong> — nearest-rank:
+          <code>ordered[ceil(0.95 * n) - 1]</code>. Stable at small n, which matters
+          for short calls with only a handful of turns.
+        </li>
+      </ul>
+
+      <p>
+        Result: <code>{provider, model, count, median_ms, p95_ms}</code> for STT
+        and for TTS, for the provider actually configured on the agent — not a
+        cross-provider fan-out.
+      </p>
+
+      <p>
+        <code>SttEvaluationSession.finalize()</code> writes both under
+        <code>session_stt_latency_ms</code> and <code>session_tts_latency_ms</code>
+        in the <code>session.summary</code> line of <code>metrics.jsonl</code>.
+        The <code>/audio-evaluations/...</code> route reads them back, and
+        <code>AudioView</code> renders four cards: STT median / p95 and TTS
+        median / p95, each sub-labelled with the provider actually used.
+      </p>
+    </section>
+
+    <section>
+      <h2>
+        The 30-second version
+        <span class="sub">what to say when someone asks</span>
+      </h2>
+      <blockquote>
+        <p>
+          For every turn we record two timestamps on the server with a monotonic
+          clock. <strong>STT:</strong> from VAD-says-user-started-speaking to
+          first final transcript. <strong>TTS:</strong> from
+          text-handed-to-provider to first audio chunk out — TTFB, which equals
+          TTFA here because we stream raw PCM, not container-wrapped audio. We
+          collect per-turn samples and report median and p95 for the provider
+          actually used. All server-side, so browser jitter doesn't pollute the
+          numbers.
+        </p>
+      </blockquote>
+    </section>
+  </main>
+</body>
+</html>
