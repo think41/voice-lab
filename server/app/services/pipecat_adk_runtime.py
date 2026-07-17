@@ -29,6 +29,7 @@ LLM_PROVIDER_KEYS = {
     "gemini": ("gemini_api_key", "GEMINI_API_KEY"),
     "openai": ("openai_api_key", "OPENAI_API_KEY"),
     "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+    "xai": ("xai_api_key", "XAI_API_KEY"),
 }
 
 
@@ -96,18 +97,25 @@ class PipecatAdkRuntime:
         return response_text
 
     def build_adk_app(self, config: AgentConfig) -> App:
+        from google.adk.models.lite_llm import LiteLlm
         from pipecat_adk import AdkInterruptionPlugin
 
         self.configure_provider_env(config)
         agent_kwargs: dict[str, Any] = {}
         if llm_provider_for_model(config.model) == "gemini":
+            model = config.model
             # BuiltInPlanner/ThinkingConfig are Gemini-specific (google.genai types).
             agent_kwargs["planner"] = BuiltInPlanner(
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
             )
+        else:
+            # ADK's registry only pattern-matches a fixed set of "provider/..."
+            # prefixes (xai/ is not among them); the explicit wrapper works for
+            # every LiteLLM provider.
+            model = LiteLlm(model=config.model)
         agent = Agent(
             name=self._normalize_agent_name(config.name),
-            model=config.model,
+            model=model,
             instruction=config.instruction,
             generate_content_config=types.GenerateContentConfig(
                 temperature=config.temperature,
@@ -119,13 +127,15 @@ class PipecatAdkRuntime:
     def configure_provider_env(self, config: AgentConfig) -> None:
         settings = get_settings()
         provider = llm_provider_for_model(config.model)
-        if provider == "gemini" and settings.gemini_api_key:
-            os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
-            os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
-        elif provider == "openai" and settings.openai_api_key:
-            os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
-        elif provider == "anthropic" and settings.anthropic_api_key:
-            os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
+        settings_attr, env_name = LLM_PROVIDER_KEYS[provider]
+        api_key = getattr(settings, settings_attr)
+        if not api_key:
+            return
+        if provider == "gemini":
+            os.environ.setdefault("GOOGLE_API_KEY", api_key)
+            os.environ.setdefault("GEMINI_API_KEY", api_key)
+        else:
+            os.environ.setdefault(env_name, api_key)
 
     def _event_text(self, event: object) -> str:
         content = getattr(event, "content", None)

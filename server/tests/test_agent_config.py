@@ -56,6 +56,7 @@ def test_llm_provider_for_model_derives_provider_from_prefix() -> None:
     assert llm_provider_for_model('gemini-3.5-flash') == 'gemini'
     assert llm_provider_for_model('openai/gpt-5.1') == 'openai'
     assert llm_provider_for_model('anthropic/claude-sonnet-5') == 'anthropic'
+    assert llm_provider_for_model('xai/grok-4') == 'xai'
 
 
 def test_agent_config_accepts_openai_and_anthropic_models() -> None:
@@ -63,6 +64,8 @@ def test_agent_config_accepts_openai_and_anthropic_models() -> None:
     assert config.model == 'openai/gpt-5.1'
     config = AgentConfig(name='Support Agent', model='anthropic/claude-sonnet-5')
     assert config.model == 'anthropic/claude-sonnet-5'
+    config = AgentConfig(name='Support Agent', model='xai/grok-4')
+    assert config.model == 'xai/grok-4'
 
 
 def test_agent_config_still_normalizes_unknown_models_to_default() -> None:

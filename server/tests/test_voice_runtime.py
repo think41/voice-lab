@@ -52,12 +52,23 @@ def test_build_adk_app_attaches_planner_only_for_gemini() -> None:
     runtime = PipecatAdkRuntime()
     gemini_app = runtime.build_adk_app(AgentConfig(name="G", model="gemini-3.5-flash"))
     assert gemini_app.root_agent.planner is not None
+    assert gemini_app.root_agent.model == "gemini-3.5-flash"
 
     claude_app = runtime.build_adk_app(
         AgentConfig(name="C", model="anthropic/claude-sonnet-5")
     )
     assert claude_app.root_agent.planner is None
-    assert claude_app.root_agent.model == "anthropic/claude-sonnet-5"
+    assert claude_app.root_agent.model.model == "anthropic/claude-sonnet-5"
+
+
+def test_build_adk_app_wraps_non_gemini_models_in_litellm() -> None:
+    from google.adk.models.lite_llm import LiteLlm
+
+    runtime = PipecatAdkRuntime()
+    for model_id in ("anthropic/claude-sonnet-5", "openai/gpt-5.1", "xai/grok-4"):
+        app = runtime.build_adk_app(AgentConfig(name="X", model=model_id))
+        assert isinstance(app.root_agent.model, LiteLlm)
+        assert app.root_agent.model.model == model_id
 
 
 def test_require_llm_api_key_raises_when_provider_key_missing(monkeypatch) -> None:
