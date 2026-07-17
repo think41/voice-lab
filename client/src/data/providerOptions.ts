@@ -46,14 +46,13 @@ const sttModelOptionsByProvider: Record<Provider, Option[]> = {
     { value: 'nova-3', label: 'Nova-3' },
   ],
   elevenlabs: [
-    { value: 'scribe_v2', label: 'Scribe v2' },
     { value: 'scribe_v2_realtime', label: 'Scribe v2 Realtime' },
   ],
 };
 
 const defaultSttModelByProvider: Record<Provider, string> = {
   deepgram: 'nova-3',
-  elevenlabs: 'scribe_v2',
+  elevenlabs: 'scribe_v2_realtime',
 };
 
 const defaultTtsVoiceByProvider: Record<Provider, string> = {

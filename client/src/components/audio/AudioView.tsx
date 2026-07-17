@@ -125,6 +125,21 @@ export function AudioView({ agent, records }: AudioViewProps) {
               <MetricCard label="STT Latency p95" value={formatLatency(providerMetrics?.latency_p95_ms ?? 0)} sub={`${titleCase(latencyProvider)} p95`} />
             </div>
 
+            {selectedRecord.session_stt_latency_ms ? (
+              <div className="mb-5 grid grid-cols-4 gap-4">
+                <MetricCard
+                  label="STT Latency — median"
+                  value={formatLatency(selectedRecord.session_stt_latency_ms.median_ms)}
+                  sub={`${titleCase(selectedRecord.session_stt_latency_ms.provider)} · live speech→final`}
+                />
+                <MetricCard
+                  label="STT Latency — p95"
+                  value={formatLatency(selectedRecord.session_stt_latency_ms.p95_ms)}
+                  sub={`${selectedRecord.session_stt_latency_ms.count} samples`}
+                />
+              </div>
+            ) : null}
+
             <div className="mb-5 rounded-2xl border border-line bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <div>
@@ -160,6 +175,7 @@ export function AudioView({ agent, records }: AudioViewProps) {
             />
 
             {selectedRecord.session_tts_sent_characters != null ||
+            selectedRecord.session_tts_latency_ms ||
             (selectedRecord.session_tts_model_costs_usd &&
               Object.keys(selectedRecord.session_tts_model_costs_usd).length > 0) ? (
               <>
@@ -171,6 +187,20 @@ export function AudioView({ agent, records }: AudioViewProps) {
                       label="TTS Characters"
                       value={selectedRecord.session_tts_sent_characters.toLocaleString()}
                       sub="characters sent to provider"
+                    />
+                  </div>
+                ) : null}
+                {selectedRecord.session_tts_latency_ms ? (
+                  <div className="mb-5 grid grid-cols-4 gap-4">
+                    <MetricCard
+                      label="TTS Latency — median"
+                      value={formatLatency(selectedRecord.session_tts_latency_ms.median_ms)}
+                      sub={`${titleCase(selectedRecord.session_tts_latency_ms.provider)} · text→first audio`}
+                    />
+                    <MetricCard
+                      label="TTS Latency — p95"
+                      value={formatLatency(selectedRecord.session_tts_latency_ms.p95_ms)}
+                      sub={`${selectedRecord.session_tts_latency_ms.count} samples`}
                     />
                   </div>
                 ) : null}

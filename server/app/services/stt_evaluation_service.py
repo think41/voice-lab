@@ -159,7 +159,13 @@ class SttEvaluationSession:
             self._background_tasks.add(task)
             task.add_done_callback(self._background_tasks.discard)
 
-    async def finalize(self, *, tts_sent_characters: int | None = None) -> None:
+    async def finalize(
+        self,
+        *,
+        tts_sent_characters: int | None = None,
+        stt_latency: dict[str, Any] | None = None,
+        tts_latency: dict[str, Any] | None = None,
+    ) -> None:
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
@@ -177,6 +183,10 @@ class SttEvaluationSession:
             summary["session_tts_model_costs_usd"] = compute_all_tts_model_costs(
                 int(tts_sent_characters)
             )
+        if stt_latency is not None:
+            summary["session_stt_latency_ms"] = stt_latency
+        if tts_latency is not None:
+            summary["session_tts_latency_ms"] = tts_latency
         await self._store.append_metrics(self._session_id, summary)
         await self._record_trace(
             "evaluation.stt.session_summary",
@@ -311,9 +321,9 @@ class SttEvaluationSession:
     async def _evaluate_deepgram(
         self, *, model: str, saved: SavedTurnAudio
     ) -> ProviderEvaluationResult:
-        api_key = self._settings.deepgram_api_key or self._settings.stt_api_key
+        api_key = self._settings.deepgram_api_key
         if not api_key:
-            raise RuntimeError("Deepgram STT evaluation requires DEEPGRAM_API_KEY or STT_API_KEY")
+            raise RuntimeError("Deepgram STT evaluation requires DEEPGRAM_API_KEY")
 
         audio_bytes = await asyncio.to_thread(Path(saved.file_path).read_bytes)
         start = time.monotonic()

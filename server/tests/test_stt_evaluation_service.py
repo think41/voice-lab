@@ -37,7 +37,6 @@ def _settings(tmp_path):
         stt_evaluation_sarvam_model="saarika:v2.5",
         stt_evaluation_sarvam_url="https://api.sarvam.ai/speech-to-text",
         deepgram_api_key=None,
-        stt_api_key=None,
         elevenlabs_api_key=None,
         sarvam_api_key=None,
     )

@@ -78,6 +78,14 @@ export interface ProviderCatalog {
   tts: TtsVoiceOption[];
 }
 
+export interface LiveLatencyMetrics {
+  provider: string;
+  model: string;
+  count: number;
+  median_ms: number;
+  p95_ms: number;
+}
+
 export interface AudioEvaluationRecord {
   session_id: string;
   run_id: string;
@@ -93,4 +101,6 @@ export interface AudioEvaluationRecord {
   evaluate_mode: boolean;
   session_tts_sent_characters?: number | null;
   session_tts_model_costs_usd?: Record<string, Record<string, number>>;
+  session_stt_latency_ms?: LiveLatencyMetrics | null;
+  session_tts_latency_ms?: LiveLatencyMetrics | null;
 }
