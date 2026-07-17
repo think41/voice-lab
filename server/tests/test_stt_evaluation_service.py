@@ -1,10 +1,13 @@
-import json
+﻿import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from app.services.stt_evaluation_service import ProviderEvaluationResult, SttEvaluationSession
+from pipeline.stt.stt_evaluation_service import (
+    ProviderEvaluationResult,
+    SttEvaluationSession,
+)
 
 
 class FakeSttEvaluationSession(SttEvaluationSession):

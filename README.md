@@ -22,11 +22,11 @@ voice-lab/
 |   |-- src/lib/             # API client, WebSocket helpers, and shared types
 |   `-- index.html           # Minimal Vite mount shell only
 |-- server/
-|   |-- app/api/routes/      # FastAPI HTTP and WebSocket routes
-|   |-- app/models/          # SQLAlchemy models
-|   |-- app/repositories/    # Database access
-|   |-- app/services/        # Pipecat ADK runtime and session services
-|   |-- app/migrations/      # Alembic migrations
+|   |-- app/                 # FastAPI app: feature folders (agents, runs, session,
+|   |   |                    #   audio_evaluations, health) with router/service/schemas/models
+|   |   `-- migrations/      # Alembic migrations
+|   |-- pipeline/            # Pipecat voice pipeline: runner, pipeline assembly, llm/ (ADK runtime
+|   |   |                    #   + sessions), custom_processors/ (bridges, metrics), utils/
 |   `-- tests/               # Backend tests
 `-- docker-compose.yml       # Local Postgres service
 ```

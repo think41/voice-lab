@@ -41,7 +41,7 @@ There is no frontend test suite; `npm run build` (which runs `tsc`) is the corre
 Single-agent voice/text testing app. One agent configuration at a time is authored in the UI, persisted in Postgres, and exercised via either a text POST endpoint or a voice WebSocket.
 
 **Voice path (real-time):**
-Browser mic → FastAPI WebSocket (`server/app/api/routes/test_call.py`) → Deepgram STT → Google ADK + Gemini (`server/app/services/pipecat_adk_runtime.py`) → Deepgram TTS → browser audio.
+Browser mic → FastAPI WebSocket (`server/app/session/router.py`) → `server/pipeline/runner.py` → Deepgram STT → Google ADK + Gemini (`server/pipeline/llm/adk_runtime.py`) → Deepgram TTS → browser audio.
 
 **Text path:** Text POST → same ADK/Gemini runtime → text response.
 
@@ -51,7 +51,7 @@ Browser mic → FastAPI WebSocket (`server/app/api/routes/test_call.py`) → Dee
 
 Every voice or text session creates a `runs` row and appends `trace_events`; the Runs view (`client/src/views/RunsView.tsx` → `/api/runs`) reads back the stored transcript rather than replaying live state.
 
-**Backend layering:** `api/routes/` (HTTP + WS) → `services/` (ADK runtime, session service) → `repositories/` → `models/` (SQLAlchemy async). Config in `app/core/config.py`, async engine in `app/core/db.py`.
+**Backend layering:** `server/app/` holds one folder per feature (`agents/`, `runs/`, `session/`, `audio_evaluations/`, `health/`), each with `router.py` (HTTP + WS) → `service.py` (DB access) → `models.py` (SQLAlchemy async) plus `schemas.py` (Pydantic). The Pipecat voice machinery lives in the sibling top-level package `server/pipeline/` (`runner.py`, `pipeline.py`, `llm/`, `stt/`, `tts/`, `custom_processors/`, `utils/`). Config in `app/config.py`, async engine in `app/db.py`.
 
 **Frontend state:** `client/src/App.tsx` owns view routing and agent/run loading; API calls go through `client/src/lib/api.ts`; shared types in `client/src/lib/types.ts`. Builder UI (`components/builder/`) and test-call panel (`components/test-call/`) both read/write the same agent config shape defined in `data/defaults.ts`.
 

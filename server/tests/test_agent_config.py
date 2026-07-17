@@ -1,6 +1,6 @@
-from pydantic import ValidationError
+﻿from pydantic import ValidationError
 
-from app.schemas.agent import AgentConfig
+from app.agents.schemas import AgentConfig
 
 
 def test_agent_config_defaults() -> None:

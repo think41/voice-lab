@@ -1,7 +1,7 @@
-import pytest
+﻿import pytest
 
-from app.schemas.agent import AgentConfig
-from app.services.pipecat_adk_runtime import PipecatAdkRuntime
+from app.agents.schemas import AgentConfig
+from pipeline.llm.adk_runtime import PipecatAdkRuntime
 
 
 def test_agent_name_normalization() -> None:

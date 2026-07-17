@@ -1,6 +1,6 @@
-from types import SimpleNamespace
+﻿from types import SimpleNamespace
 
-from app.services.pricing import compute_cost, session_totals
+from pipeline.custom_processors.metrics.pricing import compute_cost, session_totals
 
 
 def test_llm_cost_gemini_2_5_flash() -> None:

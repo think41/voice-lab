@@ -1,11 +1,11 @@
-import pytest
+﻿import pytest
 from pipecat.frames.frames import MetricsFrame
 from pipecat.metrics.metrics import (
     TTFBMetricsData,
 )
 from pipecat.processors.frame_processor import FrameDirection
 
-from app.services.pipeline_metrics import MetricsSink
+from pipeline.custom_processors.metrics.sink import MetricsSink
 
 
 class _StubRecorder:
