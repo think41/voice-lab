@@ -35,6 +35,12 @@ def test_elevenlabs_exact_model_ids_pass_through() -> None:
     )
 
 
+def test_sarvam_alias_variants_resolve_to_bulbul_models() -> None:
+    assert pricing_model_name(provider="sarvam", model="bulbul") == "bulbul:v3"
+    assert pricing_model_name(provider="sarvam", model="bulbul-v2") == "bulbul:v2"
+    assert pricing_model_name(provider="sarvam", model="bulbul_v3") == "bulbul:v3"
+
+
 def test_compute_model_cost_uses_resolved_rate() -> None:
     # 1M chars on aura-2 should be $30
     assert compute_model_cost(1_000_000, provider="deepgram", model="aura-2-thalia-en") == 30.0
@@ -43,6 +49,8 @@ def test_compute_model_cost_uses_resolved_rate() -> None:
         compute_model_cost(1_000_000, provider="elevenlabs", model="turbo-v2-5")
         == 82.5
     )
+    # 1M chars on Sarvam Bulbul v3 should be ~$31.177934 at the configured FX rate
+    assert compute_model_cost(1_000_000, provider="sarvam", model="bulbul") == 31.177934
 
 
 def test_compute_model_cost_returns_zero_for_unknown_model() -> None:
@@ -54,6 +62,7 @@ def test_compute_all_model_costs_covers_full_model_list() -> None:
     costs = compute_all_model_costs(1_000_000)
     assert costs["deepgram"] == {"aura-2": 30.0, "aura": 15.0}
     assert costs["elevenlabs"] == {"eleven_turbo_v2_5": 82.5}
+    assert costs["sarvam"] == {"bulbul:v2": 15.588967, "bulbul:v3": 31.177934}
 
 
 def test_compute_costs_clamp_negative_characters_to_zero() -> None:

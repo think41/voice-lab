@@ -13,6 +13,10 @@ from decimal import Decimal
 # (thalia, asteria, luna, orion, ...) share the aura-2 rate. All ElevenLabs
 # voices used with eleven_multilingual_v2 share the same rate; the same
 # voice on eleven_flash_v2_5 uses the flash rate instead.
+# Sarvam bills Bulbul v2/v3 in INR per 10K characters; these are converted
+# to USD using the RBI/FBIL USD reference rate from July 15, 2026
+# (1 USD = INR 96.2219) so the dashboard can compare providers on the
+# same currency axis.
 #
 # ElevenLabs bills in "credits per character" (Flash/Turbo = 0.5×,
 # Multilingual v2 / v1 / Monolingual v1 = 1×, v3 alpha = 1× for now).
@@ -28,6 +32,10 @@ RATE_PER_MILLION_CHARS_USD: dict[str, dict[str, Decimal]] = {
         # as the default (see server/app/schemas/agent.py). Add more entries here
         # only when the UI actually exposes them.
         "eleven_turbo_v2_5": Decimal("82.50"),
+    },
+    "sarvam": {
+        "bulbul:v2": Decimal("15.588967"),
+        "bulbul:v3": Decimal("31.177934"),
     },
 }
 
@@ -51,6 +59,14 @@ ELEVENLABS_MODEL_ALIASES: dict[str, str] = {
     "turbo-v2": "eleven_turbo_v2",
 }
 
+SARVAM_MODEL_ALIASES: dict[str, str] = {
+    "bulbul": "bulbul:v3",
+    "bulbul-v2": "bulbul:v2",
+    "bulbul-v3": "bulbul:v3",
+    "bulbul_v2": "bulbul:v2",
+    "bulbul_v3": "bulbul:v3",
+}
+
 
 def pricing_model_name(*, provider: str, model: str) -> str:
     if provider == "deepgram":
@@ -62,6 +78,10 @@ def pricing_model_name(*, provider: str, model: str) -> str:
         if model in RATE_PER_MILLION_CHARS_USD["elevenlabs"]:
             return model
         return ELEVENLABS_MODEL_ALIASES.get(model, model)
+    if provider == "sarvam":
+        if model in RATE_PER_MILLION_CHARS_USD["sarvam"]:
+            return model
+        return SARVAM_MODEL_ALIASES.get(model, model)
     return model
 
 

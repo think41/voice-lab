@@ -11,6 +11,7 @@ from app.core.db import get_db_session
 from app.repositories.run_repository import RunRepository
 from app.services.stt_evaluation_pricing import compute_all_model_costs
 from app.services.stt_evaluation_store import resolve_recordings_root
+from app.services.tts_evaluation_pricing import compute_all_model_costs as compute_all_tts_model_costs
 
 router = APIRouter(prefix="/audio-evaluations", tags=["audio-evaluations"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -83,13 +84,20 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
                 ),
                 file_paths=payload["file_paths"],
                 session_tts_sent_characters=payload["session_tts_sent_characters"],
-                session_tts_model_costs_usd=payload["session_tts_model_costs_usd"],
+                session_tts_model_costs_usd=_resolve_tts_model_costs(payload),
                 session_stt_latency_ms=payload["session_stt_latency_ms"],
                 session_tts_latency_ms=payload["session_tts_latency_ms"],
                 session_config=session_config,
             )
         )
     return records
+
+
+def _resolve_tts_model_costs(payload: dict[str, Any]) -> dict[str, dict[str, float]]:
+    characters = payload.get("session_tts_sent_characters")
+    if characters is not None:
+        return compute_all_tts_model_costs(int(characters))
+    return payload.get("session_tts_model_costs_usd") or {}
 
 
 def _load_metrics_summary(metrics_path: Path) -> dict[str, Any] | None:
