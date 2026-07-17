@@ -24,9 +24,15 @@ DEFAULT_MODEL = "gemini-3.5-flash"
 
 
 def llm_provider_for_model(model: str) -> str:
+    """Derive the LLM provider from a model ID already validated by AgentConfig.
+
+    Bare IDs (no "/") are Gemini; LiteLLM-prefixed IDs return the prefix.
+    """
     if "/" in model:
         return model.split("/", 1)[0]
     return "gemini"
+
+
 SUPPORTED_STT_PROVIDERS = {"deepgram", "elevenlabs"}
 SUPPORTED_TTS_PROVIDERS = {"deepgram", "elevenlabs"}
 DEFAULT_STT_PROVIDER = "deepgram"
