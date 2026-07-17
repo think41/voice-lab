@@ -22,7 +22,6 @@ logger = logging.getLogger("uvicorn.error")
 class TestSessionCreate(BaseModel):
     agent_id: str
     user_id: str = "local-user"
-    evaluate_mode: bool = False
 
 
 class TestSessionRead(BaseModel):
@@ -42,7 +41,7 @@ async def create_test_session(payload: TestSessionCreate, session: SessionDep) -
     run = await RunRepository(session).create(
         agent_id=agent.id,
         adk_session_id=adk_session_id,
-        summary={"evaluate_mode": payload.evaluate_mode},
+        summary={},
     )
     logger.info(
         "test-call session created run_id=%s agent_id=%s agent_name=%s",
@@ -145,7 +144,6 @@ async def test_call_stream_socket(websocket: WebSocket, run_id: str, session: Se
             run_id=run_id,
             session_id=run.adk_session_id,
             record_trace=record_trace,
-            evaluate_mode=bool((run.summary or {}).get("evaluate_mode", False)),
             sample_rate=48000,
         )
     except WebSocketDisconnect:

@@ -57,15 +57,6 @@ export interface TextTurn {
   assistant_text: string;
 }
 
-export interface AudioProviderMetrics {
-  call_count: number;
-  success_count: number;
-  error_count: number;
-  latency_avg_ms: number;
-  latency_median_ms: number;
-  latency_p95_ms: number;
-}
-
 export interface TtsVoiceOption {
   voice_id: string;
   label: string;
@@ -96,9 +87,7 @@ export interface AudioEvaluationRecord {
   streamed_seconds: number;
   stt_cost_usd: number | null;
   session_model_costs_usd: Record<string, Record<string, number>>;
-  provider_session_metrics: Record<string, AudioProviderMetrics>;
   file_paths: string[];
-  evaluate_mode: boolean;
   session_tts_sent_characters?: number | null;
   session_tts_model_costs_usd?: Record<string, Record<string, number>>;
   session_stt_latency_ms?: LiveLatencyMetrics | null;

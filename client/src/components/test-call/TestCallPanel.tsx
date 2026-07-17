@@ -32,7 +32,6 @@ type PanelSnapshot = {
   messages: ChatMessage[];
   audioSrc: string | null;
   textMessage: string;
-  evaluateMode: boolean;
 };
 
 export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: TestCallPanelProps) {
@@ -48,8 +47,6 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
   const [error, setError] = useState<string | null>(null);
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const [textMessage, setTextMessage] = useState('');
-  const [evaluateMode, setEvaluateMode] = useState(false);
-
   const appendLog = (event: string) => {
     console.debug('[test-call]', event);
   };
@@ -150,7 +147,6 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         messages,
         audioSrc,
         textMessage,
-        evaluateMode,
       };
     }
 
@@ -162,14 +158,12 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
         setMessages(snapshot.messages);
         setAudioSrc(snapshot.audioSrc);
         setTextMessage(snapshot.textMessage);
-        setEvaluateMode(snapshot.evaluateMode);
       } else {
         setMode('voice');
         setRunId(null);
         setMessages([]);
         setAudioSrc(null);
         setTextMessage('');
-        setEvaluateMode(false);
       }
     } else {
       setMode('voice');
@@ -177,14 +171,13 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
       setMessages([]);
       setAudioSrc(null);
       setTextMessage('');
-      setEvaluateMode(false);
     }
 
     setActive(false);
     setSending(false);
     setError(null);
     previousAgentIdRef.current = agentId;
-  }, [agentId, mode, runId, messages, audioSrc, textMessage, evaluateMode]);
+  }, [agentId, mode, runId, messages, audioSrc, textMessage]);
 
   const startVoice = async () => {
     if (!agentId) {
@@ -197,7 +190,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setRunId(null);
     try {
       const audioContext = await audio.acquireMic();
-      const session = await createTestSession(agentId, evaluateMode);
+      const session = await createTestSession(agentId);
       setRunId(session.run_id);
       const socket = new WebSocket(websocketUrl(session.websocket_url));
       socket.binaryType = 'arraybuffer';
@@ -256,7 +249,7 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
     setAudioSrc(null);
     setMessages([]);
     try {
-      const session = await createTestSession(agentId, evaluateMode);
+      const session = await createTestSession(agentId);
       setRunId(session.run_id);
       setActive(true);
       appendLog(`chat.open ${session.run_id}`);
@@ -312,18 +305,6 @@ export function TestCallPanel({ agentId, open, onClose, onSessionUpdated }: Test
           <button className={`rounded-md px-2 py-1.5 ${mode === 'voice' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('voice')}>Voice</button>
           <button className={`rounded-md px-2 py-1.5 ${mode === 'text' ? 'bg-white text-text shadow-sm' : 'text-faint'}`} onClick={() => setMode('text')}>Text</button>
         </div>
-        <label className="flex items-center justify-between rounded-lg border border-line bg-off px-3 py-2 text-xs">
-          <span>
-            <span className="block font-semibold text-text">Evaluate mode</span>
-            <span className="block text-faint">Capture turn audio and run STT evaluation providers.</span>
-          </span>
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-primary"
-            checked={evaluateMode}
-            onChange={(event) => setEvaluateMode(event.target.checked)}
-          />
-        </label>
         {mode === 'voice' ? <AudioMeter active={active} /> : null}
         <TranscriptStream messages={messages} />
         {mode === 'text' ? (
