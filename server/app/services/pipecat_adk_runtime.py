@@ -13,9 +13,10 @@ from google.genai import types
 
 from app.core.config import get_settings
 from app.schemas.agent import (
-    AgentConfig,
     LEGACY_DEEPGRAM_VOICES,
     SUPPORTED_DEEPGRAM_VOICES,
+    AgentConfig,
+    llm_provider_for_model,
 )
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
 
@@ -23,22 +24,24 @@ TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger("uvicorn.error")
 
+# provider -> (Settings attribute, env var the ADK/LiteLLM client reads)
+LLM_PROVIDER_KEYS = {
+    "gemini": ("gemini_api_key", "GEMINI_API_KEY"),
+    "openai": ("openai_api_key", "OPENAI_API_KEY"),
+    "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
+}
 
-class PipecatAdkRuntime:
-    async def validate_environment(self) -> None:
-        settings = get_settings()
-        if not settings.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY is required to run a voice test call")
-        if not (settings.deepgram_api_key or settings.elevenlabs_api_key):
-            raise RuntimeError(
-                "At least one STT/TTS provider key (Deepgram or ElevenLabs) is required"
-            )
-        logger.info(
-            "voice runtime validated gemini_key=set deepgram_key=%s elevenlabs_key=%s",
-            "set" if settings.deepgram_api_key else "unset",
-            "set" if settings.elevenlabs_api_key else "unset",
+
+def require_llm_api_key(config: AgentConfig) -> None:
+    provider = llm_provider_for_model(config.model)
+    settings_attr, env_name = LLM_PROVIDER_KEYS[provider]
+    if not getattr(get_settings(), settings_attr):
+        raise RuntimeError(
+            f"{env_name} is required to run model {config.model!r}"
         )
 
+
+class PipecatAdkRuntime:
     async def generate_agent_response(
         self,
         config: AgentConfig,
@@ -47,7 +50,7 @@ class PipecatAdkRuntime:
         user_id: str = "local-user",
         record_trace: TraceRecorder | None = None,
     ) -> str:
-        self.configure_google_api_key()
+        self.configure_provider_env(config)
         app = self.build_adk_app(config)
         session_service = create_adk_session_service()
         await ensure_adk_session(
@@ -74,10 +77,13 @@ class PipecatAdkRuntime:
         except Exception as exc:
             message_text = str(exc)
             if "RESOURCE_EXHAUSTED" in message_text or "429" in message_text:
-                logger.error("adk quota exhausted session_id=%s", session_id)
+                provider = llm_provider_for_model(config.model)
+                logger.error(
+                    "adk quota exhausted session_id=%s provider=%s", session_id, provider
+                )
                 raise RuntimeError(
-                    "Gemini quota is exhausted for the configured API key/model. "
-                    "Use a key with available quota or switch to a model/project with quota, "
+                    f"The {provider} API quota is exhausted for the configured key/model "
+                    f"({config.model}). Use a key with available quota or switch models, "
                     "then restart the FastAPI server."
                 ) from exc
             raise
@@ -92,22 +98,31 @@ class PipecatAdkRuntime:
     def build_adk_app(self, config: AgentConfig) -> App:
         from pipecat_adk import AdkInterruptionPlugin
 
-        self.configure_google_api_key()
+        self.configure_provider_env(config)
+        agent_kwargs: dict[str, Any] = {}
+        if llm_provider_for_model(config.model) == "gemini":
+            # BuiltInPlanner/ThinkingConfig are Gemini-specific (google.genai types).
+            agent_kwargs["planner"] = BuiltInPlanner(
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            )
         agent = Agent(
             name=self._normalize_agent_name(config.name),
             model=config.model,
             instruction=config.instruction,
-            planner=BuiltInPlanner(
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
-            ),
+            **agent_kwargs,
         )
         return App(name="voicelab", root_agent=agent, plugins=[AdkInterruptionPlugin()])
 
-    def configure_google_api_key(self) -> None:
+    def configure_provider_env(self, config: AgentConfig) -> None:
         settings = get_settings()
-        if settings.gemini_api_key:
+        provider = llm_provider_for_model(config.model)
+        if provider == "gemini" and settings.gemini_api_key:
             os.environ.setdefault("GOOGLE_API_KEY", settings.gemini_api_key)
             os.environ.setdefault("GEMINI_API_KEY", settings.gemini_api_key)
+        elif provider == "openai" and settings.openai_api_key:
+            os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)
+        elif provider == "anthropic" and settings.anthropic_api_key:
+            os.environ.setdefault("ANTHROPIC_API_KEY", settings.anthropic_api_key)
 
     def _event_text(self, event: object) -> str:
         content = getattr(event, "content", None)
