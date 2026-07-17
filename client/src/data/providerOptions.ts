@@ -2,9 +2,17 @@ import type { AgentConfig, Provider } from '../lib/types';
 
 type Option = { value: string; label: string };
 
+// Must stay in sync with SUPPORTED_MODELS_BY_PROVIDER in server/app/schemas/agent.py.
+// Bare IDs are Gemini (native ADK); "provider/model" IDs run via ADK's LiteLLM wrapper
+// and need the matching OPENAI_API_KEY / ANTHROPIC_API_KEY in server/.env.
 export const modelOptions: Option[] = [
   { value: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
   { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite' },
+  { value: 'openai/gpt-5.1', label: 'GPT-5.1 (OpenAI)' },
+  { value: 'openai/gpt-5-mini', label: 'GPT-5 Mini (OpenAI)' },
+  { value: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5 (Anthropic)' },
+  { value: 'anthropic/claude-haiku-4-5', label: 'Claude Haiku 4.5 (Anthropic)' },
+  { value: 'anthropic/claude-opus-4-8', label: 'Claude Opus 4.8 (Anthropic)' },
 ];
 
 export const sttProviderOptions: Option[] = [
@@ -41,7 +49,11 @@ export const elevenLabsVoiceOptions: Option[] = [
   { value: 'yoZ06aMxZJJ28mfd3POQ', label: 'Sam' },
 ];
 
-const sttModelOptionsByProvider: Record<Provider, Option[]> = {
+// Providers selectable for STT/TTS in the builder. 'sarvam' is in the Provider
+// union only for the TTS cost-comparison view and has no builder catalog.
+type SpeechProvider = Extract<Provider, 'deepgram' | 'elevenlabs'>;
+
+const sttModelOptionsByProvider: Record<SpeechProvider, Option[]> = {
   deepgram: [
     { value: 'nova-3', label: 'Nova-3' },
   ],
@@ -50,12 +62,12 @@ const sttModelOptionsByProvider: Record<Provider, Option[]> = {
   ],
 };
 
-const defaultSttModelByProvider: Record<Provider, string> = {
+const defaultSttModelByProvider: Record<SpeechProvider, string> = {
   deepgram: 'nova-3',
   elevenlabs: 'scribe_v2_realtime',
 };
 
-const defaultTtsVoiceByProvider: Record<Provider, string> = {
+const defaultTtsVoiceByProvider: Record<SpeechProvider, string> = {
   deepgram: 'aura-asteria-en',
   elevenlabs: 'JBFqnCBsd6RMkjVDRZzb',
 };
@@ -123,6 +135,6 @@ export function normalizeSpeechConfig(config: AgentConfig): AgentConfig {
   };
 }
 
-function normalizeProvider(provider: string): Provider {
+function normalizeProvider(provider: string): SpeechProvider {
   return provider === 'elevenlabs' ? 'elevenlabs' : 'deepgram';
 }
