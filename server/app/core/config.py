@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://voicelab:voicelab@localhost:5432/voicelab"
     adk_database_url: str = "postgresql+asyncpg://voicelab:voicelab@localhost:5432/voicelab"
     gemini_api_key: str | None = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
     deepgram_api_key: str | None = None
     elevenlabs_api_key: str | None = None
     sarvam_api_key: str | None = None
