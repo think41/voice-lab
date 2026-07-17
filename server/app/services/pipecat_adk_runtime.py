@@ -29,18 +29,14 @@ class PipecatAdkRuntime:
         settings = get_settings()
         if not settings.gemini_api_key:
             raise RuntimeError("GEMINI_API_KEY is required to run a voice test call")
-        if not (settings.deepgram_api_key or settings.stt_api_key):
-            raise RuntimeError("A Deepgram API key is required to transcribe microphone audio")
-        if not self._deepgram_tts_api_key():
-            raise RuntimeError("A Deepgram API key is required to speak agent responses")
+        if not (settings.deepgram_api_key or settings.elevenlabs_api_key):
+            raise RuntimeError(
+                "At least one STT/TTS provider key (Deepgram or ElevenLabs) is required"
+            )
         logger.info(
-            "voice runtime validated gemini_key=%s stt_provider=%s stt_key=%s "
-            "tts_provider=%s tts_key=%s",
-            "set",
-            settings.stt_provider,
-            "set",
-            settings.tts_provider,
-            "set",
+            "voice runtime validated gemini_key=set deepgram_key=%s elevenlabs_key=%s",
+            "set" if settings.deepgram_api_key else "unset",
+            "set" if settings.elevenlabs_api_key else "unset",
         )
 
     async def generate_agent_response(
@@ -140,8 +136,7 @@ class PipecatAdkRuntime:
         return re.sub(r"\bthink\s*41\b", "Think forty one", text, flags=re.IGNORECASE)
 
     def _deepgram_tts_api_key(self) -> str | None:
-        settings = get_settings()
-        return settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
+        return get_settings().deepgram_api_key
 
     def _deepgram_voice_model(self, voice: str) -> str:
         if voice in LEGACY_DEEPGRAM_VOICES:

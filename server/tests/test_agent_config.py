@@ -24,7 +24,7 @@ def test_agent_config_normalizes_speech_provider_defaults() -> None:
         tts_voice='',
     )
     assert config.stt_provider == 'deepgram'
-    assert config.stt_model == 'nova-2'
+    assert config.stt_model == 'nova-3'
     assert config.tts_provider == 'deepgram'
     assert config.tts_voice == 'aura-asteria-en'
 

@@ -15,6 +15,15 @@ from app.services.stt_evaluation_store import resolve_recordings_root
 router = APIRouter(prefix="/audio-evaluations", tags=["audio-evaluations"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
+
+class LiveLatencyRead(BaseModel):
+    provider: str
+    model: str
+    count: int
+    median_ms: float
+    p95_ms: float
+
+
 class AudioEvaluationRead(BaseModel):
     session_id: str
     run_id: str
@@ -28,6 +37,8 @@ class AudioEvaluationRead(BaseModel):
     file_paths: list[str]
     session_tts_sent_characters: int | None = None
     session_tts_model_costs_usd: dict[str, dict[str, float]] = Field(default_factory=dict)
+    session_stt_latency_ms: LiveLatencyRead | None = None
+    session_tts_latency_ms: LiveLatencyRead | None = None
 
 
 @router.get("/agent/{agent_id}", response_model=list[AudioEvaluationRead])
@@ -62,6 +73,8 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
                 file_paths=payload["file_paths"],
                 session_tts_sent_characters=payload["session_tts_sent_characters"],
                 session_tts_model_costs_usd=payload["session_tts_model_costs_usd"],
+                session_stt_latency_ms=payload["session_stt_latency_ms"],
+                session_tts_latency_ms=payload["session_tts_latency_ms"],
             )
         )
     return records
@@ -98,6 +111,8 @@ def _load_metrics_summary(metrics_path: Path) -> dict[str, Any] | None:
             else None
         ),
         "session_tts_model_costs_usd": session_summary.get("session_tts_model_costs_usd") or {},
+        "session_stt_latency_ms": session_summary.get("session_stt_latency_ms"),
+        "session_tts_latency_ms": session_summary.get("session_tts_latency_ms"),
     }
 
 

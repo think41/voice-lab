@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 from uuid import uuid4
@@ -17,6 +18,7 @@ from pipecat.frames.frames import (
     OutputAudioRawFrame,
     OutputTransportMessageFrame,
     TranscriptionFrame,
+    UserStartedSpeakingFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -51,6 +53,26 @@ logger = logging.getLogger("uvicorn.error")
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 EventSender = Callable[[dict[str, Any]], Awaitable[None]]
 _PROVIDER_REQUEST_EVENT = {"stt": "stt.provider_request", "tts": "tts.provider_request"}
+
+
+def _summarize_latency(
+    *, provider: str, model: str, samples: list[float]
+) -> dict[str, Any] | None:
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    n = len(ordered)
+    median_ms = ordered[n // 2] if n % 2 == 1 else (ordered[n // 2 - 1] + ordered[n // 2]) / 2.0
+    # Nearest-rank p95: index = ceil(0.95 * n) - 1, clamped to valid range.
+    p95_index = max(0, min(n - 1, -(-95 * n // 100) - 1))
+    p95_ms = ordered[p95_index]
+    return {
+        "provider": provider,
+        "model": model,
+        "count": n,
+        "median_ms": round(median_ms, 1),
+        "p95_ms": round(p95_ms, 1),
+    }
 
 
 class RawPcmWebsocketSerializer(FrameSerializer):
@@ -147,10 +169,14 @@ class SttUsageMeterMixin:
     `STTService.process_audio_frame` applies the mute/reconnect/empty-frame
     guards and only then calls `run_stt`, so every byte counted here is audio
     the provider bills for (silence included). VAD turn audio undercounts.
+
+    Also tracks per-turn STT latency: user starts speaking → first final
+    transcript. `UserTranscriptBridge` drives the start/stop hooks.
     """
 
     _streamed_audio_bytes: int = 0
     _provider_reported_audio_seconds: float = 0.0
+    _utterance_start_time: float | None = None
 
     async def run_stt(self, audio: bytes) -> AsyncGenerator[Frame | None, None]:
         self._streamed_audio_bytes += len(audio)
@@ -167,6 +193,27 @@ class SttUsageMeterMixin:
     @property
     def provider_reported_audio_seconds(self) -> float | None:
         return self._provider_reported_audio_seconds or None
+
+    def note_utterance_start(self) -> None:
+        if self._utterance_start_time is None:
+            self._utterance_start_time = time.perf_counter()
+
+    def note_transcript_final(self) -> float | None:
+        start = self._utterance_start_time
+        if start is None:
+            return None
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        self._utterance_start_time = None
+        samples = getattr(self, "_latency_samples_store", None)
+        if samples is None:
+            samples = []
+            self._latency_samples_store = samples
+        samples.append(latency_ms)
+        return latency_ms
+
+    @property
+    def latency_samples(self) -> list[float]:
+        return list(getattr(self, "_latency_samples_store", []) or [])
 
 
 class InstrumentedDeepgramSTTService(
@@ -212,18 +259,41 @@ class TtsUsageMeterMixin:
     never emitted by the Deepgram websocket service and is dropped on
     interruption, so we count at the send seam ourselves (same approach as
     `SttUsageMeterMixin`).
+
+    Also tracks per-invocation TTS latency: text handed to provider → first
+    audio frame observed downstream. `TtsLatencyBridge` drives the stop hook.
     """
 
     _sent_characters: int = 0
+    _pending_run_tts_start_time: float | None = None
 
     async def run_tts(self, text: str, context_id: str) -> AsyncGenerator[Frame | None, None]:
         self._sent_characters += len(text)
+        if self._pending_run_tts_start_time is None:
+            self._pending_run_tts_start_time = time.perf_counter()
         async for frame in super().run_tts(text, context_id):
             yield frame
 
     @property
     def sent_characters(self) -> int:
         return self._sent_characters
+
+    def note_first_audio(self) -> float | None:
+        start = self._pending_run_tts_start_time
+        if start is None:
+            return None
+        latency_ms = (time.perf_counter() - start) * 1000.0
+        self._pending_run_tts_start_time = None
+        samples = getattr(self, "_latency_samples_store", None)
+        if samples is None:
+            samples = []
+            self._latency_samples_store = samples
+        samples.append(latency_ms)
+        return latency_ms
+
+    @property
+    def latency_samples(self) -> list[float]:
+        return list(getattr(self, "_latency_samples_store", []) or [])
 
 
 class AdkDeepgramTTSService(
@@ -327,20 +397,85 @@ class AdkElevenLabsTTSService(
 
 
 class UserTranscriptBridge(FrameProcessor):
-    def __init__(self, record_trace: TraceRecorder, send_event: EventSender) -> None:
+    def __init__(
+        self,
+        record_trace: TraceRecorder,
+        send_event: EventSender,
+        stt_service: SttUsageMeterMixin,
+        stt_provider: str,
+        stt_model: str,
+    ) -> None:
         super().__init__()
         self._record_trace = record_trace
         self._send_event = send_event
+        self._stt = stt_service
+        self._stt_provider = stt_provider
+        self._stt_model = stt_model
+        self._turn_index = 0
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
-        if isinstance(frame, InterimTranscriptionFrame) and frame.text.strip():
+        if isinstance(frame, UserStartedSpeakingFrame):
+            self._stt.note_utterance_start()
+        elif isinstance(frame, InterimTranscriptionFrame) and frame.text.strip():
             await self._send_event({"type": "transcript.partial", "text": frame.text})
         elif isinstance(frame, TranscriptionFrame) and frame.text.strip():
+            latency_ms = self._stt.note_transcript_final()
+            self._turn_index += 1
+            if latency_ms is not None:
+                await self._record_trace(
+                    "latency.stt.turn",
+                    {
+                        "provider": self._stt_provider,
+                        "model": self._stt_model,
+                        "latency_ms": round(latency_ms, 1),
+                        "turn_index": self._turn_index,
+                    },
+                )
             await self._record_trace("transcript.final", {"role": "user", "text": frame.text})
             await self._send_event({"type": "transcript.final", "text": frame.text})
             await self._send_event({"type": "agent.thinking"})
+
+        await self.push_frame(frame, direction)
+
+
+class TtsLatencyBridge(FrameProcessor):
+    """Placed immediately after the TTS service. When a `run_tts` invocation
+    is pending a start timestamp on the TTS service, closes it out on the
+    first audio frame observed downstream and emits `latency.tts.turn`.
+    """
+
+    def __init__(
+        self,
+        record_trace: TraceRecorder,
+        tts_service: TtsUsageMeterMixin,
+        tts_provider: str,
+        tts_model: str,
+    ) -> None:
+        super().__init__()
+        self._record_trace = record_trace
+        self._tts = tts_service
+        self._tts_provider = tts_provider
+        self._tts_model = tts_model
+        self._invocation_index = 0
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
+        await super().process_frame(frame, direction)
+
+        if isinstance(frame, OutputAudioRawFrame):
+            latency_ms = self._tts.note_first_audio()
+            if latency_ms is not None:
+                self._invocation_index += 1
+                await self._record_trace(
+                    "latency.tts.turn",
+                    {
+                        "provider": self._tts_provider,
+                        "model": self._tts_model,
+                        "latency_ms": round(latency_ms, 1),
+                        "turn_index": self._invocation_index,
+                    },
+                )
 
         await self.push_frame(frame, direction)
 
@@ -399,7 +534,7 @@ class PlaybackTraceBridge(FrameProcessor):
 
 class PipecatStreamingRuntime:
     def _deepgram_api_key(self, settings) -> str | None:
-        return settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
+        return settings.deepgram_api_key
 
     def _elevenlabs_api_key(self, settings) -> str | None:
         return settings.elevenlabs_api_key
@@ -578,9 +713,21 @@ class PipecatStreamingRuntime:
         async def send_event(payload: dict[str, Any]) -> None:
             await websocket.send_json(payload)
 
-        user_trace_bridge = UserTranscriptBridge(record_trace, send_event)
+        user_trace_bridge = UserTranscriptBridge(
+            record_trace,
+            send_event,
+            stt_service=stt,
+            stt_provider=config.stt_provider,
+            stt_model=config.stt_model,
+        )
         assistant_trace_bridge = AssistantTraceBridge(record_trace, send_event, helper)
         playback_bridge = PlaybackTraceBridge(record_trace, send_event)
+        tts_latency_bridge = TtsLatencyBridge(
+            record_trace,
+            tts_service=tts,
+            tts_provider=config.tts_provider,
+            tts_model=metrics_tts_model,
+        )
         stt_evaluation = SttEvaluationSession(
             settings=settings,
             session_id=session_id,
@@ -615,6 +762,7 @@ class PipecatStreamingRuntime:
                 llm,
                 assistant_trace_bridge,
                 tts,
+                tts_latency_bridge,
                 audio_buffer,
                 transport.output(),
                 playback_bridge,
@@ -697,5 +845,17 @@ class PipecatStreamingRuntime:
                     },
                 )
             finally:
-                await stt_evaluation.finalize(tts_sent_characters=tts.sent_characters)
+                await stt_evaluation.finalize(
+                    tts_sent_characters=tts.sent_characters,
+                    stt_latency=_summarize_latency(
+                        provider=config.stt_provider,
+                        model=config.stt_model,
+                        samples=stt.latency_samples,
+                    ),
+                    tts_latency=_summarize_latency(
+                        provider=config.tts_provider,
+                        model=metrics_tts_model,
+                        samples=tts.latency_samples,
+                    ),
+                )
         logger.info("pipecat streaming test-call ended run_id=%s", run_id)

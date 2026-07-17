@@ -89,7 +89,13 @@ class SttEvaluationSession:
             },
         )
 
-    async def finalize(self, *, tts_sent_characters: int | None = None) -> None:
+    async def finalize(
+        self,
+        *,
+        tts_sent_characters: int | None = None,
+        stt_latency: dict[str, Any] | None = None,
+        tts_latency: dict[str, Any] | None = None,
+    ) -> None:
         summary: dict[str, Any] = {
             "type": "session.summary",
             "session_id": self._session_id,
@@ -102,6 +108,10 @@ class SttEvaluationSession:
             summary["session_tts_model_costs_usd"] = compute_all_tts_model_costs(
                 int(tts_sent_characters)
             )
+        if stt_latency is not None:
+            summary["session_stt_latency_ms"] = stt_latency
+        if tts_latency is not None:
+            summary["session_tts_latency_ms"] = tts_latency
         await self._store.append_metrics(self._session_id, summary)
         await self._record_trace(
             "evaluation.stt.session_summary",

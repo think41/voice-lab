@@ -51,7 +51,7 @@ def invalidate_cache() -> None:
 
 async def _fetch_and_normalize() -> dict[str, list[dict[str, Any]]]:
     settings = get_settings()
-    api_key = settings.deepgram_api_key or settings.stt_api_key or settings.tts_api_key
+    api_key = settings.deepgram_api_key
     if not api_key:
         raise RuntimeError("no Deepgram API key configured")
 
