@@ -509,7 +509,6 @@ class PipecatStreamingRuntime:
         run_id: str,
         session_id: str,
         record_trace: TraceRecorder,
-        evaluate_mode: bool = False,
         user_id: str = "local-user",
         sample_rate: int = 48000,
     ) -> None:
@@ -586,7 +585,6 @@ class PipecatStreamingRuntime:
             settings=settings,
             session_id=session_id,
             run_id=run_id,
-            evaluate_mode=evaluate_mode and settings.enable_stt_evaluation,
             record_trace=record_trace,
         )
         audio_buffer = AudioBufferProcessor(
@@ -651,7 +649,6 @@ class PipecatStreamingRuntime:
                 "stt_model": config.stt_model,
                 "tts_provider": config.tts_provider,
                 "tts_voice": config.tts_voice,
-                "evaluate_mode": evaluate_mode and settings.enable_stt_evaluation,
             },
         )
         logger.info("pipecat streaming test-call started run_id=%s", run_id)
