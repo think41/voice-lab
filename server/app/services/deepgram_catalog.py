@@ -1,4 +1,4 @@
-"""Fetch Deepgram's TTS voice catalog live from `/v1/models`."""
+"""Return curated Deepgram TTS voices, optionally enriched from `/v1/models`."""
 
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ logger = logging.getLogger("uvicorn.error")
 
 _MODELS_URL = "https://api.deepgram.com/v1/models"
 _CACHE_TTL_SECONDS = 6 * 60 * 60
-_FALLBACK_PATH = Path(__file__).parent / "_deepgram_fallback.json"
+_CURATED_CATALOG = json.loads(
+    (Path(__file__).parent / "_deepgram_fallback.json").read_text(encoding="utf-8")
+)
 
 _cache: dict[str, Any] | None = None
 _cache_expires_at: float = 0.0
@@ -33,11 +35,7 @@ async def get_catalog() -> dict[str, list[dict[str, Any]]]:
     async with _lock:
         if _cache is not None and time.monotonic() < _cache_expires_at:
             return _cache
-        try:
-            catalog = await _fetch_and_normalize()
-        except Exception as exc:
-            logger.warning("deepgram catalog fetch failed, using fallback: %s", exc)
-            catalog = _load_fallback()
+        catalog = await _fetch_and_normalize()
         _cache = catalog
         _cache_expires_at = time.monotonic() + _CACHE_TTL_SECONDS
         return catalog
@@ -53,14 +51,18 @@ async def _fetch_and_normalize() -> dict[str, list[dict[str, Any]]]:
     settings = get_settings()
     api_key = settings.deepgram_api_key
     if not api_key:
-        raise RuntimeError("no Deepgram API key configured")
+        return _CURATED_CATALOG
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        response = await client.get(_MODELS_URL, headers={"Authorization": f"Token {api_key}"})
-        response.raise_for_status()
-        raw = response.json()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(_MODELS_URL, headers={"Authorization": f"Token {api_key}"})
+            response.raise_for_status()
+            raw = response.json()
+    except Exception as exc:
+        logger.warning("deepgram catalog enrichment failed, returning curated voices: %s", exc)
+        return _CURATED_CATALOG
 
-    return {"tts": _normalize_tts(raw.get("tts", []))}
+    return {"tts": _merge_curated_tts(_normalize_tts(raw.get("tts", [])))}
 
 
 def _has_english(languages: list[str]) -> bool:
@@ -89,10 +91,29 @@ def _normalize_tts(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(seen.values(), key=lambda value: value["label"])
 
 
+def _merge_curated_tts(live_entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    live_by_voice_id = {
+        str(entry["voice_id"]): entry
+        for entry in live_entries
+        if isinstance(entry.get("voice_id"), str) and entry["voice_id"]
+    }
+    merged: list[dict[str, Any]] = []
+    for curated in _CURATED_CATALOG.get("tts", []):
+        voice_id = curated.get("voice_id")
+        if not isinstance(voice_id, str) or not voice_id:
+            continue
+        live = live_by_voice_id.get(voice_id, {})
+        merged.append(
+            {
+                "voice_id": voice_id,
+                "label": live.get("label") or curated.get("label") or voice_id,
+                "provider": "deepgram",
+                "sample": live.get("sample") or curated.get("sample"),
+                "accent": live.get("accent") or curated.get("accent"),
+            }
+        )
+    return merged
+
+
 def _titleize(name: str) -> str:
     return " ".join(part.capitalize() for part in name.replace("_", "-").split("-"))
-
-
-def _load_fallback() -> dict[str, list[dict[str, Any]]]:
-    with _FALLBACK_PATH.open("r", encoding="utf-8") as fp:
-        return json.load(fp)
