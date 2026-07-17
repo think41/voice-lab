@@ -797,6 +797,8 @@ class PipecatStreamingRuntime:
                 "stt_model": config.stt_model,
                 "tts_provider": config.tts_provider,
                 "tts_voice": config.tts_voice,
+                "tts_model": metrics_tts_model,
+                "llm_model": config.model,
             },
         )
         logger.info("pipecat streaming test-call started run_id=%s", run_id)

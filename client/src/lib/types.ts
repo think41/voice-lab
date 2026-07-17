@@ -77,6 +77,15 @@ export interface LiveLatencyMetrics {
   p95_ms: number;
 }
 
+export interface SessionConfigInfo {
+  stt_provider?: string | null;
+  stt_model?: string | null;
+  llm_model?: string | null;
+  tts_provider?: string | null;
+  tts_model?: string | null;
+  tts_voice?: string | null;
+}
+
 export interface AudioEvaluationRecord {
   session_id: string;
   run_id: string;
@@ -92,4 +101,5 @@ export interface AudioEvaluationRecord {
   session_tts_model_costs_usd?: Record<string, Record<string, number>>;
   session_stt_latency_ms?: LiveLatencyMetrics | null;
   session_tts_latency_ms?: LiveLatencyMetrics | null;
+  session_config?: SessionConfigInfo | null;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import type { AgentRecord, AudioEvaluationRecord } from '../../lib/types';
+import type { AgentRecord, AudioEvaluationRecord, SessionConfigInfo } from '../../lib/types';
 
 interface AudioViewProps {
   agent: AgentRecord | null;
@@ -92,6 +92,8 @@ export function AudioView({ agent, records }: AudioViewProps) {
                 Session-level cost across all provider models from the recorded session audio.
               </p>
             </div>
+
+            <SessionConfigStrip config={selectedRecord.session_config} />
 
             <SectionHeader label="STT" />
             <div className="mb-5 grid grid-cols-2 gap-4">
@@ -224,6 +226,31 @@ function CostComparisonGrid({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SessionConfigStrip({ config }: { config?: SessionConfigInfo | null }) {
+  if (!config) return null;
+  const sttLabel = [config.stt_provider, config.stt_model].filter(Boolean).join(' · ');
+  const llmLabel = config.llm_model ?? null;
+  const ttsLabel = [config.tts_provider, config.tts_model ?? config.tts_voice].filter(Boolean).join(' · ');
+  const pills: { key: string; label: string; value: string }[] = [];
+  if (sttLabel) pills.push({ key: 'stt', label: 'STT', value: sttLabel });
+  if (llmLabel) pills.push({ key: 'llm', label: 'LLM', value: llmLabel });
+  if (ttsLabel) pills.push({ key: 'tts', label: 'TTS', value: ttsLabel });
+  if (pills.length === 0) return null;
+  return (
+    <div className="mb-5 flex flex-wrap gap-2">
+      {pills.map((pill) => (
+        <div
+          key={pill.key}
+          className="flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-xs shadow-sm"
+        >
+          <span className="font-semibold uppercase tracking-wide text-faint">{pill.label}</span>
+          <span className="text-text">{pill.value}</span>
+        </div>
+      ))}
     </div>
   );
 }
