@@ -1,4 +1,4 @@
-from app.services.stt_evaluation_pricing import (
+﻿from pipeline.stt.stt_evaluation_pricing import (
     compute_all_model_costs,
     compute_duration_seconds,
     compute_model_cost,

@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from pipecat.frames.frames import Frame
 
-from app.services.pipecat_streaming_runtime import SttUsageMeterMixin
+from pipeline.stt.stt import SttUsageMeterMixin
 
 
 class _FakeSTTService:

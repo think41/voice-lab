@@ -1,7 +1,7 @@
-import pytest
+﻿import pytest
 
-from app.schemas.agent import AgentConfig
-from app.services.pipecat_adk_runtime import PipecatAdkRuntime, require_llm_api_key
+from app.agents.schemas import AgentConfig
+from pipeline.llm.adk_runtime import PipecatAdkRuntime, require_llm_api_key
 
 
 def test_agent_name_normalization() -> None:
@@ -76,7 +76,7 @@ def test_build_adk_app_wraps_non_gemini_models_in_litellm() -> None:
 
 
 def test_require_llm_api_key_raises_when_provider_key_missing(monkeypatch) -> None:
-    from app.core.config import get_settings
+    from app.config import get_settings
 
     settings = get_settings()
     monkeypatch.setattr(settings, "openai_api_key", None)
@@ -85,7 +85,7 @@ def test_require_llm_api_key_raises_when_provider_key_missing(monkeypatch) -> No
 
 
 def test_require_llm_api_key_passes_when_key_present(monkeypatch) -> None:
-    from app.core.config import get_settings
+    from app.config import get_settings
 
     settings = get_settings()
     monkeypatch.setattr(settings, "anthropic_api_key", "test-key")

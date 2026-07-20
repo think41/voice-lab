@@ -1,6 +1,6 @@
-from pydantic import ValidationError
+﻿from pydantic import ValidationError
 
-from app.schemas.agent import AgentConfig, llm_provider_for_model
+from app.agents.schemas import AgentConfig, llm_provider_for_model
 
 
 def test_agent_config_defaults() -> None:

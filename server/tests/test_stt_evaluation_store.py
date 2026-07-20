@@ -1,9 +1,9 @@
-import json
+﻿import json
 import wave
 
 import pytest
 
-from app.services.stt_evaluation_store import SttEvaluationStore
+from pipeline.stt.stt_evaluation_store import SttEvaluationStore
 
 
 @pytest.mark.asyncio

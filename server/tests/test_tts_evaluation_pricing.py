@@ -1,4 +1,4 @@
-from app.services.tts_evaluation_pricing import (
+from pipeline.tts.tts_evaluation_pricing import (
     compute_all_model_costs,
     compute_model_cost,
     pricing_model_name,
