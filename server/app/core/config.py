@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
-    xai_api_key: str | None = None
     groq_api_key: str | None = None
     deepgram_api_key: str | None = None
     elevenlabs_api_key: str | None = None

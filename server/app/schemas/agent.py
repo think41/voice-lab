@@ -18,10 +18,6 @@ SUPPORTED_MODELS_BY_PROVIDER = {
         "anthropic/claude-haiku-4-5",
         "anthropic/claude-opus-4-8",
     },
-    "xai": {
-        "xai/grok-4",
-        "xai/grok-3-mini",
-    },
     "groq": {
         "groq/llama-3.3-70b-versatile",
         "groq/llama-3.1-8b-instant",

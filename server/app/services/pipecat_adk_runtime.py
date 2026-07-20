@@ -29,7 +29,6 @@ LLM_PROVIDER_KEYS = {
     "gemini": ("gemini_api_key", "GEMINI_API_KEY"),
     "openai": ("openai_api_key", "OPENAI_API_KEY"),
     "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
-    "xai": ("xai_api_key", "XAI_API_KEY"),
     "groq": ("groq_api_key", "GROQ_API_KEY"),
 }
 
@@ -111,8 +110,7 @@ class PipecatAdkRuntime:
             )
         else:
             # ADK's registry only pattern-matches a fixed set of "provider/..."
-            # prefixes (xai/ is not among them); the explicit wrapper works for
-            # every LiteLLM provider.
+            # prefixes; the explicit wrapper works for every LiteLLM provider.
             model = LiteLlm(model=config.model)
         agent = Agent(
             name=self._normalize_agent_name(config.name),

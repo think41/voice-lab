@@ -68,7 +68,6 @@ def test_build_adk_app_wraps_non_gemini_models_in_litellm() -> None:
     for model_id in (
         "anthropic/claude-sonnet-5",
         "openai/gpt-5.1",
-        "xai/grok-4",
         "groq/llama-3.1-8b-instant",
     ):
         app = runtime.build_adk_app(AgentConfig(name="X", model=model_id))
