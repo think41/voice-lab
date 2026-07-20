@@ -119,6 +119,7 @@ GEMINI_API_KEY=
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 XAI_API_KEY=
+GROQ_API_KEY=
 STT_PROVIDER=deepgram
 STT_API_KEY=
 TTS_PROVIDER=deepgram
@@ -199,7 +200,7 @@ Recent runs:
 - Do not store base64 audio in `trace_events`; store text and metadata only.
 - Do not leak `.env` secrets. When inspecting keys, only print whether set, length, or suffix.
 - If the UI does not show a run immediately, check DB first. The run may be persisted but the frontend may need refresh.
-- LLM provider is selected per-agent via the model ID: bare `gemini-*` IDs run natively; `openai/...`, `anthropic/...`, and `xai/...` IDs run through ADK's LiteLLM wrapper and require `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `XAI_API_KEY` respectively. Supported IDs live in `SUPPORTED_MODELS_BY_PROVIDER` (`server/app/schemas/agent.py`); unknown IDs are normalized to the default model by the pydantic validator, same as before.
+- LLM provider is selected per-agent via the model ID: bare `gemini-*` IDs run natively; `openai/...`, `anthropic/...`, `xai/...`, and `groq/...` IDs run through ADK's LiteLLM wrapper and require `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `XAI_API_KEY` / `GROQ_API_KEY` respectively. Note: Groq (fast inference host, console.groq.com) and Grok (xAI's model) are different providers. Supported IDs live in `SUPPORTED_MODELS_BY_PROVIDER` (`server/app/schemas/agent.py`); unknown IDs are normalized to the default model by the pydantic validator, same as before.
 - The frontend model dropdown (`client/src/data/providerOptions.ts` → `modelOptions`) must stay in sync with `SUPPORTED_MODELS_BY_PROVIDER` on the server when adding models.
 
 ## Development Rules For Agents

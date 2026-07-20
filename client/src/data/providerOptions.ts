@@ -15,6 +15,8 @@ export const modelOptions: Option[] = [
   { value: 'anthropic/claude-opus-4-8', label: 'Claude Opus 4.8 (Anthropic)' },
   { value: 'xai/grok-4', label: 'Grok 4 (xAI)' },
   { value: 'xai/grok-3-mini', label: 'Grok 3 Mini (xAI)' },
+  { value: 'groq/llama-3.3-70b-versatile', label: 'Llama 3.3 70B (Groq)' },
+  { value: 'groq/llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant (Groq)' },
 ];
 
 export const sttProviderOptions: Option[] = [

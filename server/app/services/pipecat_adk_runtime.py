@@ -30,6 +30,7 @@ LLM_PROVIDER_KEYS = {
     "openai": ("openai_api_key", "OPENAI_API_KEY"),
     "anthropic": ("anthropic_api_key", "ANTHROPIC_API_KEY"),
     "xai": ("xai_api_key", "XAI_API_KEY"),
+    "groq": ("groq_api_key", "GROQ_API_KEY"),
 }
 
 

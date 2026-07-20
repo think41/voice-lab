@@ -65,7 +65,12 @@ def test_build_adk_app_wraps_non_gemini_models_in_litellm() -> None:
     from google.adk.models.lite_llm import LiteLlm
 
     runtime = PipecatAdkRuntime()
-    for model_id in ("anthropic/claude-sonnet-5", "openai/gpt-5.1", "xai/grok-4"):
+    for model_id in (
+        "anthropic/claude-sonnet-5",
+        "openai/gpt-5.1",
+        "xai/grok-4",
+        "groq/llama-3.1-8b-instant",
+    ):
         app = runtime.build_adk_app(AgentConfig(name="X", model=model_id))
         assert isinstance(app.root_agent.model, LiteLlm)
         assert app.root_agent.model.model == model_id

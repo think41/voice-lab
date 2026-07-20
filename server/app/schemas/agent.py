@@ -22,6 +22,10 @@ SUPPORTED_MODELS_BY_PROVIDER = {
         "xai/grok-4",
         "xai/grok-3-mini",
     },
+    "groq": {
+        "groq/llama-3.3-70b-versatile",
+        "groq/llama-3.1-8b-instant",
+    },
 }
 SUPPORTED_MODELS = set().union(*SUPPORTED_MODELS_BY_PROVIDER.values())
 DEFAULT_MODEL = "gemini-3.5-flash"
