@@ -161,6 +161,6 @@ def build_pipeline_task(
             audio_in_sample_rate=sample_rate,
             audio_out_sample_rate=24000,
             enable_metrics=True,
-            enable_usage_metrics=False,
+            enable_usage_metrics=True,
         ),
     )

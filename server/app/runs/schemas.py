@@ -18,5 +18,6 @@ class RunRead(BaseModel):
     adk_session_id: str
     status: str
     summary: dict[str, Any] = Field(default_factory=dict)
+    usage: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     trace_events: list[TraceEventRead] = Field(default_factory=list)

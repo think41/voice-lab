@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import get_db_session
 from app.runs.schemas import RunRead, TraceEventRead
 from app.runs.service import RunRepository
+from pipeline.custom_processors.metrics.pricing import session_totals
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
@@ -44,6 +45,7 @@ async def list_runs(session: SessionDep) -> list[RunRead]:
             adk_session_id=record.adk_session_id,
             status=record.status,
             summary=record.summary,
+            usage=session_totals(record.trace_events),
             created_at=record.created_at,
             trace_events=[
                 TraceEventRead(

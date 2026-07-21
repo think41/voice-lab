@@ -1,8 +1,9 @@
 ﻿"""Sink Pipecat metrics we still persist as trace events.
 
-The legacy runtime `usage.llm` / `usage.stt` / `usage.tts` trace path has been
-removed. Audio duration and model-cost comparison now come from the turn-based
-STT evaluation pipeline instead of runtime trace_events.
+The legacy runtime `usage.stt` / `usage.tts` trace path was removed; audio
+duration and model-cost comparison come from the turn-based STT evaluation
+pipeline instead of runtime trace_events. `usage.llm` is recorded here from
+Pipecat's `LLMUsageMetricsData`, which `AdkLLMService` emits per turn.
 """
 
 from collections.abc import Awaitable, Callable
@@ -13,9 +14,12 @@ from pipecat.frames.frames import (
     MetricsFrame,
 )
 from pipecat.metrics.metrics import (
+    LLMUsageMetricsData,
     TTFBMetricsData,
 )
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+
+from pipeline.custom_processors.metrics.pricing import compute_cost
 
 TraceRecorder = Callable[[str, dict[str, Any]], Awaitable[None]]
 
@@ -52,3 +56,14 @@ class MetricsSink(FrameProcessor):
                     "seconds": float(item.value),
                 },
             )
+        elif isinstance(item, LLMUsageMetricsData):
+            if item.value.total_tokens <= 0:
+                return
+            usage_payload: dict[str, Any] = {
+                "model": item.model,
+                "prompt_tokens": item.value.prompt_tokens,
+                "completion_tokens": item.value.completion_tokens,
+                "total_tokens": item.value.total_tokens,
+            }
+            usage_payload["cost_usd"] = float(compute_cost("usage.llm", usage_payload))
+            await self._record_trace("usage.llm", usage_payload)

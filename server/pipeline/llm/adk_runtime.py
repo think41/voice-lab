@@ -16,6 +16,7 @@ from app.agents.schemas import (
     llm_provider_for_model,
 )
 from app.config import get_settings
+from pipeline.custom_processors.metrics.pricing import compute_cost
 from pipeline.llm.adk_session_service import create_adk_session_service, ensure_adk_session
 from pipeline.utils.text import clean_model_text, normalize_for_speech
 from pipeline.utils.tracing import TraceRecorder
@@ -58,6 +59,7 @@ class PipecatAdkRuntime:
         runner = Runner(app=app, session_service=session_service)
         message = types.Content(role="user", parts=[types.Part(text=user_text)])
         response_parts: list[str] = []
+        prompt_tokens = completion_tokens = total_tokens = 0
         logger.info("adk turn start session_id=%s transcript_chars=%d", session_id, len(user_text))
         try:
             async for event in runner.run_async(
@@ -69,6 +71,11 @@ class PipecatAdkRuntime:
                 event_text = self._event_text(event)
                 if event_text:
                     response_parts.append(event_text)
+                # Final event is authoritative for token counts (cumulative in streaming mode).
+                if event.usage_metadata and not event.partial:
+                    prompt_tokens = event.usage_metadata.prompt_token_count or 0
+                    completion_tokens = event.usage_metadata.candidates_token_count or 0
+                    total_tokens = event.usage_metadata.total_token_count or 0
                 if getattr(event, "error_message", None):
                     logger.error(
                         "adk event error session_id=%s error=%s", session_id, event.error_message
@@ -92,6 +99,16 @@ class PipecatAdkRuntime:
         logger.info(
             "adk turn complete session_id=%s response_chars=%d", session_id, len(response_text)
         )
+        if record_trace is not None and total_tokens > 0:
+            usage_payload: dict[str, Any] = {
+                "provider": llm_provider_for_model(config.model),
+                "model": config.model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+            }
+            usage_payload["cost_usd"] = float(compute_cost("usage.llm", usage_payload))
+            await record_trace("usage.llm", usage_payload)
         return response_text
 
     def build_adk_app(self, config: AgentConfig) -> App:
