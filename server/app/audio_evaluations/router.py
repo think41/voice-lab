@@ -25,7 +25,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 @router.get("/agent/{agent_id}", response_model=list[AudioEvaluationRead])
-/* TODO - rename to some genric name 
+# TODO - rename to some generic name
 async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[AudioEvaluationRead]:
     settings = get_settings()
     recordings_root = resolve_recordings_root(settings.stt_evaluation_recordings_dir)
