@@ -1,4 +1,4 @@
-from app.core.config import Settings
+from app.config import Settings
 
 
 def test_settings_have_llm_provider_key_fields(monkeypatch) -> None:

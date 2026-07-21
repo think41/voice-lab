@@ -47,22 +47,27 @@ Frontend:
 - `client/src/lib/api.ts` - frontend API calls
 - `client/src/lib/types.ts` - shared frontend types
 
-Backend:
-- `server/app/main.py` - FastAPI app setup
-- `server/app/api/routes/agents.py` - agent CRUD APIs
-- `server/app/api/routes/runs.py` - recent runs API
-- `server/app/api/routes/test_call.py` - voice/text test session APIs and WebSocket
-- `server/app/core/config.py` - env config
-- `server/app/core/db.py` - async SQLAlchemy setup
-- `server/app/models/agent.py` - agents table
-- `server/app/models/run.py` - runs table
-- `server/app/models/trace_event.py` - trace_events table
-- `server/app/repositories/agent_repository.py` - agent persistence
-- `server/app/repositories/run_repository.py` - run/trace persistence
-- `server/app/services/pipecat_adk_runtime.py` - ADK + Gemini + Deepgram TTS runtime
-- `server/app/services/pipecat_streaming_runtime.py` - Pipecat streaming runtime experiment
-- `server/app/services/adk_session_service.py` - Google ADK session service
+Backend (`server/app/` — FastAPI app, one folder per feature with `router.py` / `service.py` / `schemas.py` / `models.py`):
+- `server/app/main.py` - FastAPI app setup, router registration
+- `server/app/config.py` - env config
+- `server/app/db.py` - async SQLAlchemy setup
+- `server/app/agents/` - agent CRUD (router, service, schemas, `agents` table model)
+- `server/app/runs/` - recent runs API (router, service, schemas, `runs` + `trace_events` table models)
+- `server/app/session/` - voice/text test session APIs and WebSocket (router, schemas)
+- `server/app/audio_evaluations/` - STT evaluation read API (router, service, schemas)
+- `server/app/health/` - health check
 - `server/app/migrations/versions/0001_create_core_tables.py` - initial DB schema
+
+Voice pipeline (`server/pipeline/` — Pipecat machinery, sibling package of `server/app/`):
+- `server/pipeline/runner.py` - `PipecatStreamingRuntime.run_websocket` orchestration
+- `server/pipeline/pipeline.py` - STT/TTS service construction + Pipecat pipeline/task assembly
+- `server/pipeline/llm/adk_runtime.py` - ADK + Gemini runtime (app builder, text turns)
+- `server/pipeline/llm/adk_session_service.py` - Google ADK session service
+- `server/pipeline/custom_processors/bridges.py` - transcript/assistant/playback trace bridges (custom Pipecat FrameProcessors)
+- `server/pipeline/custom_processors/metrics/` - metrics sink, pricing
+- `server/pipeline/stt/` - instrumented STT services + STT evaluation (service/store/pricing)
+- `server/pipeline/tts/` - instrumented TTS services
+- `server/pipeline/utils/` - websocket serializer, provider-request tracing mixin, text normalization
 
 ## Database
 

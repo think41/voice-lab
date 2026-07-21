@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 import pytest
 from pipecat.frames.frames import Frame
 
-from app.services.pipecat_streaming_runtime import TtsUsageMeterMixin
+from pipeline.tts.tts import TtsUsageMeterMixin
 
 
 class _FakeTTSService:

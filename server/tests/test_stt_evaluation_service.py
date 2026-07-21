@@ -1,10 +1,10 @@
-import json
+﻿import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from app.services.stt_evaluation_service import SttEvaluationSession
+from pipeline.stt.stt_evaluation_service import SttEvaluationSession
 
 
 def _settings(tmp_path):
