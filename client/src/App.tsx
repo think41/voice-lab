@@ -7,7 +7,7 @@ import { TestCallPanel } from './components/test-call/TestCallPanel';
 import { Modal } from './components/ui/Modal';
 import { Toast } from './components/ui/Toast';
 import { defaultAgentConfig } from './data/defaults';
-import { normalizeSpeechConfig } from './data/providerOptions';
+import { modelOptions, normalizeSpeechConfig } from './data/providerOptions';
 import {
   createAgent,
   getDeepgramCatalog,
@@ -26,7 +26,9 @@ import { SettingsView } from './views/SettingsView';
 
 type View = 'builder' | 'runs' | 'audio' | 'settings';
 
-const supportedModels = new Set(['gemini-3.5-flash', 'gemini-3.1-flash-lite']);
+// Derive from the dropdown so this can never drift from the options the UI offers
+// (and, in turn, from SUPPORTED_MODELS_BY_PROVIDER on the server).
+const supportedModels = new Set(modelOptions.map((option) => option.value));
 
 function normalizeVoiceConfig(config: AgentConfig): AgentConfig {
   return normalizeSpeechConfig({

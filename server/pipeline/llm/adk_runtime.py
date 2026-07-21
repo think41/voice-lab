@@ -99,8 +99,10 @@ class PipecatAdkRuntime:
         from pipecat_adk import AdkInterruptionPlugin
 
         self.configure_provider_env(config)
+        provider = llm_provider_for_model(config.model)
+        logger.info("adk llm selected provider=%s model=%s", provider, config.model)
         agent_kwargs: dict[str, Any] = {}
-        if llm_provider_for_model(config.model) == "gemini":
+        if provider == "gemini":
             model = config.model
             # BuiltInPlanner/ThinkingConfig are Gemini-specific (google.genai types).
             agent_kwargs["planner"] = BuiltInPlanner(
