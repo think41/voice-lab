@@ -42,7 +42,7 @@ from pipecat_adk.frames import (
 from app.core.config import get_settings
 from app.schemas.agent import DEFAULT_TTS_MODEL_BY_PROVIDER, AgentConfig
 from app.services.adk_session_service import create_adk_session_service, ensure_adk_session
-from app.services.pipecat_adk_runtime import PipecatAdkRuntime
+from app.services.pipecat_adk_runtime import PipecatAdkRuntime, require_llm_api_key
 from app.services.pipeline_metrics import (
     MetricsSink,
 )
@@ -648,8 +648,7 @@ class PipecatStreamingRuntime:
         sample_rate: int = 48000,
     ) -> None:
         settings = get_settings()
-        if not settings.gemini_api_key:
-            raise RuntimeError("GEMINI_API_KEY is required to run a streaming voice test call")
+        require_llm_api_key(config)
 
         helper = PipecatAdkRuntime()
         app = helper.build_adk_app(config)

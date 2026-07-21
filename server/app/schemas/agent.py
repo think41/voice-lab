@@ -2,11 +2,41 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-SUPPORTED_MODELS = {
-    "gemini-3.5-flash",
-    "gemini-3.1-flash-lite",
+# Gemini models are bare IDs (resolved natively by ADK); all other providers use
+# LiteLLM-prefixed IDs ("provider/model"), resolved via ADK's LiteLlm wrapper.
+SUPPORTED_MODELS_BY_PROVIDER = {
+    "gemini": {
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+    },
+    "openai": {
+        "openai/gpt-5.1",
+        "openai/gpt-5-mini",
+    },
+    "anthropic": {
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4-5",
+        "anthropic/claude-opus-4-8",
+    },
+    "groq": {
+        "groq/llama-3.3-70b-versatile",
+        "groq/llama-3.1-8b-instant",
+    },
 }
+SUPPORTED_MODELS = set().union(*SUPPORTED_MODELS_BY_PROVIDER.values())
 DEFAULT_MODEL = "gemini-3.5-flash"
+
+
+def llm_provider_for_model(model: str) -> str:
+    """Derive the LLM provider from a model ID already validated by AgentConfig.
+
+    Bare IDs (no "/") are Gemini; LiteLLM-prefixed IDs return the prefix.
+    """
+    if "/" in model:
+        return model.split("/", 1)[0]
+    return "gemini"
+
+
 SUPPORTED_STT_PROVIDERS = {"deepgram", "elevenlabs"}
 SUPPORTED_TTS_PROVIDERS = {"deepgram", "elevenlabs"}
 DEFAULT_STT_PROVIDER = "deepgram"

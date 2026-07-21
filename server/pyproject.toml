@@ -20,6 +20,8 @@ dependencies = [
     # Declare ADK/genai explicitly instead of relying on pipecat-adk transitives.
     "google-adk>=2.2.0,<3",
     "google-genai>=2.8.0,<3",
+    # LiteLLM backs ADK's openai/... and anthropic/... model-id resolution.
+    "litellm>=1.70",
 ]
 
 [dependency-groups]

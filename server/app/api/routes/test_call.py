@@ -6,12 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.core.db import get_db_session
 from app.repositories.agent_repository import AgentRepository
 from app.repositories.run_repository import RunRepository
 from app.schemas.agent import AgentConfig
-from app.services.pipecat_adk_runtime import PipecatAdkRuntime
+from app.services.pipecat_adk_runtime import PipecatAdkRuntime, require_llm_api_key
 from app.services.pipecat_streaming_runtime import PipecatStreamingRuntime
 
 router = APIRouter(prefix="/test-call", tags=["test-call"])
@@ -83,9 +82,11 @@ async def create_text_turn(
         raise HTTPException(status_code=404, detail="Run not found")
 
     runtime = PipecatAdkRuntime()
-    settings = get_settings()
-    if not settings.gemini_api_key:
-        raise HTTPException(status_code=400, detail="GEMINI_API_KEY is required for text chat")
+    config = AgentConfig.model_validate(run.agent.config)
+    try:
+        require_llm_api_key(config)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     async def record_trace(event_type: str, trace_payload: dict[str, Any]) -> None:
         await run_repository.append_trace(
@@ -94,7 +95,6 @@ async def create_text_turn(
             payload=trace_payload,
         )
 
-    config = AgentConfig.model_validate(run.agent.config)
     await record_trace("transcript.final", {"role": "user", "text": message, "mode": "text"})
     try:
         assistant_text = await runtime.generate_agent_response(

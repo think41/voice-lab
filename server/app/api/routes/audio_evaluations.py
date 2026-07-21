@@ -11,7 +11,9 @@ from app.core.db import get_db_session
 from app.repositories.run_repository import RunRepository
 from app.services.stt_evaluation_pricing import compute_all_model_costs
 from app.services.stt_evaluation_store import resolve_recordings_root
-from app.services.tts_evaluation_pricing import compute_all_model_costs as compute_all_tts_model_costs
+from app.services.tts_evaluation_pricing import (
+    compute_all_model_costs as compute_all_tts_model_costs,
+)
 
 router = APIRouter(prefix="/audio-evaluations", tags=["audio-evaluations"])
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
