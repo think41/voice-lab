@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audio_evaluations.schemas import AudioEvaluationRead
 from app.audio_evaluations.service import (
     extract_session_config,
+    extract_usage_llm,
     extract_usage_stt,
     load_metrics_summary,
     resolve_tts_model_costs,
@@ -13,6 +14,9 @@ from app.audio_evaluations.service import (
 from app.config import get_settings
 from app.db import get_db_session
 from app.runs.service import RunRepository
+from pipeline.llm.llm_evaluation_pricing import (
+    compute_all_model_costs as compute_all_llm_model_costs,
+)
 from pipeline.stt.stt_evaluation_pricing import compute_all_model_costs
 from pipeline.stt.stt_evaluation_store import resolve_recordings_root
 
@@ -21,6 +25,7 @@ SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 @router.get("/agent/{agent_id}", response_model=list[AudioEvaluationRead])
+/* TODO - rename to some genric name 
 async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[AudioEvaluationRead]:
     settings = get_settings()
     recordings_root = resolve_recordings_root(settings.stt_evaluation_recordings_dir)
@@ -35,6 +40,7 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
         if payload is None:
             continue
         usage = extract_usage_stt(run.trace_events)
+        llm_usage = extract_usage_llm(run.trace_events)
         session_config = extract_session_config(run.trace_events)
         records.append(
             AudioEvaluationRead(
@@ -49,6 +55,13 @@ async def list_audio_evaluations(agent_id: str, session: SessionDep) -> list[Aud
                 stt_cost_usd=usage["cost_usd"],
                 session_model_costs_usd=compute_all_model_costs(
                     usage["streamed_seconds"] or payload["session_stt_duration_sec"]
+                ),
+                session_llm_prompt_tokens=llm_usage["prompt_tokens"],
+                session_llm_completion_tokens=llm_usage["completion_tokens"],
+                session_llm_total_tokens=llm_usage["total_tokens"],
+                session_llm_cost_usd=llm_usage["cost_usd"],
+                session_llm_model_costs_usd=compute_all_llm_model_costs(
+                    llm_usage["prompt_tokens"], llm_usage["completion_tokens"]
                 ),
                 file_paths=payload["file_paths"],
                 session_tts_sent_characters=payload["session_tts_sent_characters"],

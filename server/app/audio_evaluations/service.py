@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from app.audio_evaluations.schemas import SessionConfigRead
+from pipeline.custom_processors.metrics.pricing import session_totals
 from pipeline.tts.tts_evaluation_pricing import (
     compute_all_model_costs as compute_all_tts_model_costs,
 )
@@ -65,6 +66,16 @@ def extract_session_config(trace_events: list[Any]) -> SessionConfigRead | None:
             tts_voice=payload.get("tts_voice"),
         )
     return None
+
+
+def extract_usage_llm(trace_events: list[Any]) -> dict[str, Any]:
+    totals = session_totals(trace_events)["llm"]
+    return {
+        "prompt_tokens": int(totals["prompt_tokens"]),
+        "completion_tokens": int(totals["completion_tokens"]),
+        "total_tokens": int(totals["total_tokens"]),
+        "cost_usd": float(totals["cost_usd"]),
+    }
 
 
 def extract_usage_stt(trace_events: list[Any]) -> dict[str, float | None]:

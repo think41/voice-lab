@@ -1,4 +1,4 @@
-import { Activity, Bot, Headphones, Plus, Settings, Sliders } from 'lucide-react';
+import { Activity, Bot, Gauge, Plus, Settings, Sliders } from 'lucide-react';
 
 import type { AgentRecord } from '../../lib/types';
 
@@ -16,7 +16,7 @@ interface SidebarProps {
 const subItems: Array<{ view: View; label: string; icon: typeof Sliders }> = [
   { view: 'builder', label: 'Builder', icon: Sliders },
   { view: 'runs', label: 'Conversations', icon: Activity },
-  { view: 'audio', label: 'Audio', icon: Headphones },
+  { view: 'audio', label: 'Metrics', icon: Gauge },
 ];
 
 export function Sidebar({

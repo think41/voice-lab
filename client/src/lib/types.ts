@@ -96,6 +96,11 @@ export interface AudioEvaluationRecord {
   streamed_seconds: number;
   stt_cost_usd: number | null;
   session_model_costs_usd: Record<string, Record<string, number>>;
+  session_llm_prompt_tokens: number;
+  session_llm_completion_tokens: number;
+  session_llm_total_tokens: number;
+  session_llm_cost_usd: number | null;
+  session_llm_model_costs_usd: Record<string, Record<string, number>>;
   file_paths: string[];
   session_tts_sent_characters?: number | null;
   session_tts_model_costs_usd?: Record<string, Record<string, number>>;

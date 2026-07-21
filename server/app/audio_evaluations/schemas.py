@@ -28,6 +28,11 @@ class AudioEvaluationRead(BaseModel):
     streamed_seconds: float
     stt_cost_usd: float | None = None
     session_model_costs_usd: dict[str, dict[str, float]]
+    session_llm_prompt_tokens: int = 0
+    session_llm_completion_tokens: int = 0
+    session_llm_total_tokens: int = 0
+    session_llm_cost_usd: float | None = None
+    session_llm_model_costs_usd: dict[str, dict[str, float]] = Field(default_factory=dict)
     file_paths: list[str]
     session_tts_sent_characters: int | None = None
     session_tts_model_costs_usd: dict[str, dict[str, float]] = Field(default_factory=dict)
